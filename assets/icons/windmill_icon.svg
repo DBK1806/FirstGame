@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <path fill="#af8451" stroke="#544536" stroke-width="2" d="m15 39 3-21h12l4 21z"/>
+  <path fill="#466d69" d="m13 21 11-12 12 12z"/>
+  <g fill="#e9d395" stroke="#695437" stroke-width="1.4">
+    <path id="sail" d="m23 21-2-15 6-3-1 15z"/>
+    <use href="#sail" transform="rotate(120 24 21)"/>
+    <use href="#sail" transform="rotate(240 24 21)"/>
+  </g>
+  <circle cx="24" cy="21" r="3" fill="#735030"/>
+</svg>

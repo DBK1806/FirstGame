@@ -1,0 +1,88 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/game.gd" id="1"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/music/pass_watch.wav" id="2"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/bow_release.wav" id="3"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/goblin_fall.wav" id="4"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/brute_fall.wav" id="5"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/mortar_launch.wav" id="6"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/shell_fall.wav" id="7"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/shell_blast.wav" id="8"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/gate_strike.wav" id="9"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/brick_lay.wav" id="10"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/brick_rubble.wav" id="11"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/menu_click.wav" id="12"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/victory.wav" id="13"]
+
+[node name="Перевал" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Victory" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("13")
+bus = &"Effects"
+volume_db = -6.0
+
+[node name="MenuClick" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("12")
+bus = &"Effects"
+volume_db = -9.0
+
+[node name="BrickLay" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("10")
+bus = &"Effects"
+volume_db = -10.0
+max_polyphony = 3
+
+[node name="BrickRubble" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("11")
+bus = &"Effects"
+volume_db = -10.0
+max_polyphony = 3
+
+[node name="MortarLaunch" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6")
+bus = &"Effects"
+volume_db = -11.0
+max_polyphony = 3
+
+[node name="ShellFall" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("7")
+bus = &"Effects"
+volume_db = -17.0
+max_polyphony = 3
+
+[node name="ShellBlast" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("8")
+bus = &"Effects"
+volume_db = -10.0
+max_polyphony = 3
+
+[node name="GateStrike" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("9")
+bus = &"Effects"
+volume_db = -10.0
+max_polyphony = 3
+
+[node name="BackgroundMusic" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("2")
+bus = &"Music"
+volume_db = -12.0
+autoplay = true
+
+[node name="BowRelease" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3")
+bus = &"Effects"
+volume_db = -13.0
+max_polyphony = 4
+
+[node name="GoblinFall" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4")
+bus = &"Effects"
+volume_db = -11.0
+max_polyphony = 3
+
+[node name="BruteFall" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5")
+bus = &"Effects"
+volume_db = -10.0
+max_polyphony = 3

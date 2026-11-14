@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/gameplay/game.gd" id="1"]
 [ext_resource type="AudioStreamWAV" path="res://assets/audio/music/pass_watch.wav" id="2"]
@@ -13,9 +13,15 @@
 [ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/brick_rubble.wav" id="11"]
 [ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/menu_click.wav" id="12"]
 [ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/victory.wav" id="13"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/speed_switch.wav" id="14"]
 
 [node name="Перевал" type="Node3D"]
 script = ExtResource("1")
+
+[node name="SpeedCue" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("14")
+bus = &"Effects"
+volume_db = -12.0
 
 [node name="Victory" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("13")

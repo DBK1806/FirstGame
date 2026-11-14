@@ -32,6 +32,11 @@ const TOWER_COSTS = [COST,MORTAR_COST,40]
 const TOWER_RANGES = [RANGE,MORTAR_RANGE,3]
 const TOWER_ICONS = [preload("res://assets/icons/archer_icon.svg"),preload("res://assets/icons/mortar_icon.svg"),preload("res://assets/icons/windmill_icon.svg")]
 const MILL_SLOW_PERCENT = 25
+const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,60,45]
+const ELITE_RANGES = [RANGE,4.5,3.5]
+const HEAVY_SHELL_DAMAGE = 8
+const HEAVY_BLAST_RADIUS = 2
+const STRONG_WIND_PERCENT = 40
 const CAMERA_OFFSET = Vector3(10,22,29)
 @export var mill_valley = false
 @export var three_fields = false
@@ -43,6 +48,7 @@ var damage_dealt = 0.0
 var gold_earned = 0
 var monsters_defeated = 0
 var hud_root: Control
+var speed_panel = PanelContainer.new()
 
 var route: Array[Vector2i] = []
 var pads = {}
@@ -75,7 +81,7 @@ var upgrade_title = Label.new()
 var upgrade_action = Button.new()
 var upgrade_stats = Label.new()
 var upgrade_kind = Tower.ARCHER
-var archers_upgraded = false
+var upgraded = [false,false,false]
 var tower_details = RichTextLabel.new()
 var hovered = Vector2i(999,999)
 var ring = Node3D.new()
@@ -166,8 +172,12 @@ func build_quarry():
 		var mountain = group(Vector3(peak.x,0,peak.z))
 		mountain.rotation.y = peak.x
 		mountain.scale = Vector3(1.25,peak.y,0.85)
-		quarry_rock(mountain,Vector3.ZERO,[Vector2(1.12,0),Vector2(0.88,0.21),
-			Vector2(0.56,0.49),Vector2(0.31,0.78),Vector2(0.20,0.91),Vector2(0.11,0.976),Vector2(0,1)],0.13)
+		quarry_rock(mountain,Vector3.ZERO,[Vector2(1.06,0),Vector2(0.92,0.23),
+			Vector2(0.79,0.38),Vector2(0.63,0.43),Vector2(0.57,0.70),
+			Vector2(0.41,0.84),Vector2(0.30,0.95),Vector2(0.19,0.98),Vector2(0,1)],0.16)
+		var spur = quarry_rock(mountain,Vector3(0.60,0,0.22),[Vector2(0.62,0),
+			Vector2(0.54,0.19),Vector2(0.36,0.39),Vector2(0.25,0.49),Vector2(0,0.53)],0.14)
+		spur.rotation.y = 0.8
 	var arch = group(Vector3(-8,0,-2))
 	for side in [-1,1]:
 		for row in 3:
@@ -213,18 +223,21 @@ func build_quarry():
 		for tuft in [Vector3(-0.17,0.14,0),Vector3(0.12,0.18,-0.07),Vector3(0.21,0.12,0.13)]:
 			cone(shrub,tuft,0.24,0.14,tuft.y*2,7,"677c46","needles")
 
-func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: float):
-	# Shared, concentric rings keep the cap seated and smooth the shoulder of the rock.
-	var sides = 16
+func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: float) -> MeshInstance3D:
+	# Short bevels between broad faces catch the low evening light.
+	var sides = 9
+	var phase = parent.position.x + origin.z
 	var mesh = SurfaceTool.new()
 	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for level in profile.size():
 		var ring_point: Vector2 = profile[level]
 		var count = sides if ring_point.x > 0 else 1
 		for i in count:
-			var a = TAU*i/sides
-			var r = ring_point.x*(1.0+irregularity*(sin(3*a)+0.36*cos(5*a)))
-			mesh.add_vertex(Vector3(r*cos(a),ring_point.y,r*sin(a)))
+			var a = TAU*i/sides + 0.07*sin(i*3.7+phase)
+			var h = ring_point.y / profile.back().y
+			var r = ring_point.x*(1.0+irregularity*(sin(3*a+phase)+0.54*cos(4*a+h*2.8)))
+			var tilt = r * sin(a+phase) * 0.12 * minf(h*8.0,1)
+			mesh.add_vertex(Vector3(r*cos(a)+0.14*h*sin(phase),ring_point.y+tilt,r*sin(a)))
 		if level > 0:
 			for i in sides:
 				var low = (level-1)*sides
@@ -235,17 +248,35 @@ func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: 
 					for index in [low+j,low+sides+j,low+sides+i]:
 						mesh.add_index(index)
 	mesh.generate_normals()
+	# Blend smooth vertex normals toward each actual fracture plane.
+	mesh.deindex()
+	var facets = SurfaceTool.new()
+	facets.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var arrays = mesh.commit_to_arrays()
+	var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	for i in range(0,points.size(),3):
+		var face = (points[i+2]-points[i]).cross(points[i+1]-points[i]).normalized()
+		for j in range(i,i+3):
+			facets.set_normal(normals[j].lerp(face,0.52).normalized())
+			facets.add_vertex(points[j])
 	var rock = MeshInstance3D.new()
-	rock.mesh = mesh.commit()
+	rock.mesh = facets.commit()
 	rock.material_override = preload("res://shaders/quarry_rock.tres")
 	parent.add_child(rock)
 	rock.position = origin
+	return rock
 
 func build_mine(at: Vector3, facing: float):
 	var mine = group(at)
 	mine.rotation.y = facing
-	quarry_rock(mine,Vector3(0,0,-0.2),[Vector2(1.1,0),Vector2(1.02,0.55),
-		Vector2(0.81,1.06),Vector2(0.62,1.29),Vector2(0.35,1.46),Vector2(0,1.52)],0.055)
+	quarry_rock(mine,Vector3(0,0,-0.24),[Vector2(1.0,0),Vector2(1.02,0.42),
+		Vector2(0.88,0.76),Vector2(0.76,0.82),Vector2(0.70,1.13),
+		Vector2(0.48,1.38),Vector2(0.31,1.45),Vector2(0,1.47)],0.12)
+	for side in [-1,1]:
+		var shoulder = quarry_rock(mine,Vector3(side*0.74,0,0.25),[Vector2(0.43,0),
+			Vector2(0.39,0.32),Vector2(0.31,0.49),Vector2(0.18,0.69),Vector2(0,0.72)],0.13)
+		shoulder.scale.y = 1.0 if side == 1 else 0.78
 	box(mine,Vector3(0,0.49,0.71),Vector3(0.90,0.98,0.20),"332d29")
 	for side in [-1,1]:
 		box(mine,Vector3(side*0.48,0.52,0.85),Vector3(0.17,1.04,0.20),WOOD,"wood").rotation.z = -side*0.07
@@ -540,6 +571,7 @@ func build_ui():
 	top.add_child(coin)
 	label_style(stats,20,"f7e9c8")
 	top.add_child(stats)
+	build_speed_controls(root)
 	var bottom = hud_panel(root,true)
 	build_tower_row(bottom,false)
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -556,6 +588,45 @@ func build_ui():
 	build_tower_row(bottom,true)
 	root.add_child(preload("res://scripts/ui/pause_menu.gd").new())
 	default_hint()
+
+func build_speed_controls(root: Control):
+	root.add_child(speed_panel)
+	speed_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	speed_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	speed_panel.offset_right = -22
+	speed_panel.offset_left = -222
+	speed_panel.offset_top = 82
+	speed_panel.add_theme_stylebox_override("panel",panel_color("273831","6b765a"))
+	var row = HBoxContainer.new()
+	speed_panel.add_child(row)
+	var caption = Label.new()
+	caption.text = "Скорость"
+	label_style(caption,16,"edcf94")
+	row.add_child(caption)
+	var choices = ButtonGroup.new()
+	for rate in [1,2,3]:
+		var button = Button.new()
+		button.text = "%d×" % rate
+		button.custom_minimum_size = Vector2(38,28)
+		button.toggle_mode = true
+		button.button_group = choices
+		button.button_pressed = rate == 1
+		var active = panel_color("78582d","edc572")
+		active.content_margin_left = 4
+		active.content_margin_right = 4
+		active.content_margin_top = 2
+		active.content_margin_bottom = 2
+		button.add_theme_stylebox_override("pressed",active)
+		button.add_theme_stylebox_override("hover_pressed",active)
+		row.add_child(button)
+		button.pressed.connect(func():
+			if Engine.time_scale != rate:
+				Engine.time_scale = rate
+				$SpeedCue.play()
+		)
+
+func _exit_tree():
+	Engine.time_scale = 1.0
 
 func build_tower_row(bottom, upgrades: bool):
 	var stack = VBoxContainer.new()
@@ -641,7 +712,7 @@ func build_tower_row(bottom, upgrades: bool):
 		options.add_child(upgrade_stats)
 		options.add_child(upgrade_action)
 		upgrade_action.pressed.connect($MenuClick.play.bind(0.0))
-		upgrade_action.pressed.connect(buy_archer_upgrade)
+		upgrade_action.pressed.connect(buy_upgrade)
 		return
 	tower_details.bbcode_enabled = true
 	tower_details.custom_minimum_size = Vector2(320,180)
@@ -657,31 +728,64 @@ func stat_text(value: float) -> String:
 	return String.num(value,1).replace(".",",")
 
 func archer_damage() -> float:
-	return VETERAN_DAMAGE if archers_upgraded else ARROW_DAMAGE
+	return VETERAN_DAMAGE if upgraded[Tower.ARCHER] else ARROW_DAMAGE
 
 func archer_interval() -> float:
-	return VETERAN_INTERVAL if archers_upgraded else ARCHER_INTERVAL
+	return VETERAN_INTERVAL if upgraded[Tower.ARCHER] else ARCHER_INTERVAL
+
+func tower_range(kind: int) -> float:
+	return ELITE_RANGES[kind] if upgraded[kind] else TOWER_RANGES[kind]
 
 func refresh_upgrade():
-	var archer = upgrade_kind == Tower.ARCHER
-	upgrade_stats.visible = archer
-	upgrade_stats.text = "Урон  %s   ·   Выстрел каждые %s с" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL)]
-	upgrade_action.text = "Улучшить до уровня 2"
-	upgrade_action.disabled = not archer or finished or archers_upgraded or coins < ARCHER_UPGRADE_COST
-	if archer:
-		upgrade_action.text = "Уровень 2 получен" if archers_upgraded else "Улучшить за %d монет" % ARCHER_UPGRADE_COST
+	match upgrade_kind:
+		Tower.ARCHER:
+			upgrade_stats.text = "Урон  %s   ·   Выстрел каждые %s с" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL)]
+		Tower.MORTAR:
+			upgrade_stats.text = "Урон  %d   ·   Радиус взрыва  %d кл.\nДальность  %s кл." % [HEAVY_SHELL_DAMAGE,HEAVY_BLAST_RADIUS,stat_text(ELITE_RANGES[Tower.MORTAR])]
+		Tower.MILL:
+			upgrade_stats.text = "Замедление  %d%%   ·   Радиус  %s кл." % [STRONG_WIND_PERCENT,stat_text(ELITE_RANGES[Tower.MILL])]
+	var price = UPGRADE_COSTS[upgrade_kind]
+	upgrade_action.disabled = finished or upgraded[upgrade_kind] or coins < price
+	upgrade_action.text = "Уровень 2 получен" if upgraded[upgrade_kind] else "Улучшить за %d монет" % price
 
-func buy_archer_upgrade():
-	if upgrade_kind != Tower.ARCHER or finished or archers_upgraded or coins < ARCHER_UPGRADE_COST:
+func buy_upgrade():
+	var price = UPGRADE_COSTS[upgrade_kind]
+	if finished or upgraded[upgrade_kind] or coins < price or (upgrade_kind == Tower.MILL and level_number < 3):
 		return
-	coins -= ARCHER_UPGRADE_COST
-	archers_upgraded = true
+	coins -= price
+	upgraded[upgrade_kind] = true
 	for tower in towers:
-		if tower.kind == Tower.ARCHER:
-			reinforce_archer(tower.node,true)
-			tower.cool *= VETERAN_INTERVAL / ARCHER_INTERVAL
+		if tower.kind == upgrade_kind:
+			tower.range = tower_range(tower.kind)
+			reinforce_tower(tower,true)
 	$BrickLay.play()
 	refresh()
+
+func reinforce_tower(tower, animate: bool):
+	var base: Node3D = tower.node
+	if tower.kind == Tower.ARCHER:
+		reinforce_archer(base,animate)
+		return
+	if tower.kind == Tower.MORTAR:
+		var tube = tower.barrel.get_node("Tube")
+		tube.scale = Vector3(1.2,1.12,1.2)
+		for h in [0.18,0.42]:
+			cone(tube,Vector3.UP*h,0.226,0.226,0.07,10,"cda153")
+		for side in [-1,1]:
+			box(tower.barrel,Vector3(side*0.27,0.12,0),Vector3(0.09,0.28,0.49),"565d61")
+	else:
+		cone(base,Vector3.UP*0.34,0.45,0.40,0.22,8,"b6aa91","stone")
+		var rotor = base.get_node("Rotor")
+		rotor.scale = Vector3.ONE*1.15
+		for i in 3:
+			var sail = limb_joint(rotor,Vector3.ZERO)
+			sail.rotation.z = (i+0.5)*TAU/3
+			box(sail,Vector3.UP*0.30,Vector3(0.045,0.60,0.05),WOOD,"wood")
+			box(sail,Vector3(0.07,0.40,0),Vector3(0.13,0.35,0.03),"83aeaa")
+	if animate:
+		tower_dust(base.position,false)
+		base.scale = Vector3(1,0.88,1)
+		base.create_tween().tween_property(base,"scale",Vector3.ONE,0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func reinforce_archer(base: Node3D, animate: bool):
 	var stonework = limb_joint(base,Vector3.ZERO)
@@ -701,14 +805,16 @@ func reinforce_archer(base: Node3D, animate: bool):
 func show_tower_details(kind: int):
 	var description: String
 	if kind == Tower.MILL:
-		description = "Замедление   [color=#ffd079]%d%%[/color]\nДействует, пока враг в радиусе" % MILL_SLOW_PERCENT
+		description = "Замедление   [color=#ffd079]%d%%[/color]\nДействует, пока враг в радиусе" % (STRONG_WIND_PERCENT if upgraded[kind] else MILL_SLOW_PERCENT)
 	else:
 		var mortar = kind == Tower.MORTAR
 		description = "Урон   [color=#ffd079]%s[/color]\nВыстрел каждые   [color=#ffd079]%s с[/color]" % [
-			stat_text(SHELL_DAMAGE if mortar else archer_damage()),stat_text(MORTAR_INTERVAL if mortar else archer_interval())]
+			stat_text((HEAVY_SHELL_DAMAGE if upgraded[kind] else SHELL_DAMAGE) if mortar else archer_damage()),stat_text(MORTAR_INTERVAL if mortar else archer_interval())]
+		if mortar:
+			description += "\nРадиус взрыва   [color=#ffd079]%s кл.[/color]" % stat_text(HEAVY_BLAST_RADIUS if upgraded[kind] else BLAST_RADIUS)
 	tower_details.text = ("[b][font_size=23][color=#ffe4ad]%s[/color][/font_size]\n%s\n%s\n" +
 		"Дальность   [color=#ffd079]%s кл.[/color]\nЦена   [color=#ffd079]%d монет[/color][/b]") % [
-		TOWER_NAMES[kind]+(" · II" if kind == Tower.ARCHER and archers_upgraded else ""),TOWER_ROLES[kind],description,stat_text(TOWER_RANGES[kind]),TOWER_COSTS[kind]]
+		TOWER_NAMES[kind]+(" · II" if upgraded[kind] else ""),TOWER_ROLES[kind],description,stat_text(tower_range(kind)),TOWER_COSTS[kind]]
 	info_panel.show()
 	info_panel.reset_size()
 	info_panel.position = Vector2(0,-info_panel.size.y-4)
@@ -792,8 +898,6 @@ func _unhandled_input(event):
 		return
 	if not pads.has(cell):
 		return
-	if tower_at(cell, event.position) != null:
-		return
 	var price = TOWER_COSTS[selected_tower]
 	if coins < price:
 		hint.text = "Для башни нужно ещё %d монет" % (price-coins)
@@ -801,15 +905,15 @@ func _unhandled_input(event):
 		return
 	var n = group(ground(cell))
 	var tower = {"node":n,"cool":0.0,"cell":cell,"pad":pads[cell],"price":price,
-		"range": TOWER_RANGES[selected_tower], "kind":selected_tower, "barrel":null}
+		"range": tower_range(selected_tower), "kind":selected_tower, "barrel":null}
 	if selected_tower == Tower.MILL:
 		build_slow_mill(n)
 	elif selected_tower == Tower.MORTAR:
 		tower.barrel = build_mortar(n)
 	else:
 		turret(n,Vector3.ZERO,0.85)
-		if archers_upgraded:
-			reinforce_archer(n,false)
+	if upgraded[selected_tower]:
+		reinforce_tower(tower,false)
 	towers.append(tower)
 	tower_dust(n.position, false)
 	$BrickLay.play()
@@ -1016,6 +1120,7 @@ func build_slow_mill(base: Node3D):
 		box(base,Vector3(side*0.23,0.72,0.265),Vector3(0.056,0.81,0.045),WOOD,"wood")
 	cone(base,Vector3.UP*1.19,0.49,0.05,0.41,4,"477570","roof").rotation.y = PI/4
 	var rotor = limb_joint(base,Vector3(0,1.07,0.37))
+	rotor.name = "Rotor"
 	for i in 3:
 		var sail = limb_joint(rotor,Vector3.ZERO)
 		sail.rotation.z = i*TAU/3
@@ -1031,6 +1136,7 @@ func build_mortar(base: Node3D) -> Node3D:
 	for side in [-1,1]:
 		box(swivel,Vector3(side*0.23,0.12,0),Vector3(0.11,0.29,0.43),WOOD,"wood")
 	var barrel = limb_joint(swivel, Vector3.UP*0.12)
+	barrel.name = "Tube"
 	barrel.rotation.x = 0.55
 	cone(barrel,Vector3.UP*0.28,0.18,0.22,0.64,10,"625542")
 	cone(barrel,Vector3.UP*0.56,0.245,0.245,0.12,10,"aa8249")
@@ -1038,6 +1144,8 @@ func build_mortar(base: Node3D) -> Node3D:
 	return swivel
 
 func launch_shell(tower, enemy):
+	var damage = HEAVY_SHELL_DAMAGE if upgraded[Tower.MORTAR] else SHELL_DAMAGE
+	var blast_radius = HEAVY_BLAST_RADIUS if upgraded[Tower.MORTAR] else BLAST_RADIUS
 	var progress = minf(enemy.progress + movement_speed(enemy) * FLIGHT_TIME, route.size()-1-GATE_OFFSET)
 	var i = floori(progress)
 	var target = ground(route[i]).lerp(ground(route[i+1]), progress-i) + Vector3.UP*0.12
@@ -1068,8 +1176,8 @@ func launch_shell(tower, enemy):
 		burst.tween_callback(flash.queue_free)
 		if not finished:
 			for mob in enemies.duplicate():
-				if mob.node.position.distance_squared_to(target) <= BLAST_RADIUS**2:
-					damage_enemy(mob, SHELL_DAMAGE)
+				if mob.node.position.distance_squared_to(target) <= blast_radius**2:
+					damage_enemy(mob, damage)
 	)
 
 func update_gate_damage():
@@ -1131,6 +1239,8 @@ func end_game(won):
 	if finished:
 		return
 	finished = true
+	Engine.time_scale = 1.0
+	speed_panel.hide()
 	fighting = false
 	ring.hide()
 	hint.text = "Ворота пали. Попробуйте другую расстановку башен."
@@ -1206,7 +1316,7 @@ func _process(delta):
 func update_range_preview(point: Vector2, over_ui: bool):
 	var empty = Vector2i(999,999)
 	var cell = empty if over_ui else mouse_cell(point)
-	var tower = null if over_ui else tower_at(cell, point)
+	var tower = null if over_ui or pads.has(cell) else tower_at(cell, point)
 	if tower != null:
 		cell = empty
 	if cell != hovered:
@@ -1215,7 +1325,7 @@ func update_range_preview(point: Vector2, over_ui: bool):
 		hovered = cell
 	ring.visible = tower != null or pads.has(cell)
 	if ring.visible:
-		var radius = TOWER_RANGES[selected_tower]
+		var radius = tower_range(selected_tower)
 		if tower != null:
 			radius = tower.range
 			ring.position = tower.node.position
@@ -1229,7 +1339,8 @@ func update_range_preview(point: Vector2, over_ui: bool):
 func movement_speed(mob) -> float:
 	for tower in towers:
 		if tower.kind == Tower.MILL and tower.node.position.distance_squared_to(mob.node.position) <= tower.range**2:
-			return mob.speed * (1.0 - MILL_SLOW_PERCENT / 100.0)
+			var percent = STRONG_WIND_PERCENT if upgraded[Tower.MILL] else MILL_SLOW_PERCENT
+			return mob.speed * (1.0 - percent / 100.0)
 	return mob.speed
 
 func step_wave(delta):

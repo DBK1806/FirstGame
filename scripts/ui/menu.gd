@@ -2,27 +2,18 @@ extends "res://scripts/world/scenery.gd"
 
 const Campaign = preload("res://scripts/gameplay/campaign.gd")
 const TRANSITION = preload("res://scripts/ui/transition.gd")
-const SETTINGS = "user://display.cfg"
-const SIZES = [Vector2i(800,600), Vector2i(1024,768), Vector2i(1280,720),
-	Vector2i(1280,800), Vector2i(1366,768), Vector2i(1600,900),
-	Vector2i(1920,1080), Vector2i(1980,1080)]
+const SettingsPanel = preload("res://scripts/ui/settings_panel.gd")
 
 var navigation = VBoxContainer.new()
-var settings = VBoxContainer.new()
+var settings = SettingsPanel.new()
 var levels = VBoxContainer.new()
-var picker = OptionButton.new()
 var play_button: Button
 var settings_button: Button
 var starting = false
-var selected_size = Vector2i(1280,800)
 
 func _ready():
-	var config = ConfigFile.new()
-	if config.load(SETTINGS) == OK:
-		var saved = config.get_value("display","size")
-		if saved in SIZES:
-			selected_size = saved
-	apply_size(selected_size)
+	SettingsPanel.apply_size(get_window(),SettingsPanel.saved_size())
+	settings.preview = $EffectsPreview
 	build_landscape()
 	var layer = CanvasLayer.new()
 	add_child(layer)
@@ -65,40 +56,9 @@ func _ready():
 	menu_button(levels,"Назад",show_home)
 	settings_button = menu_button(navigation,"Настройки",show_settings)
 	menu_button(navigation,"Выход",get_tree().quit)
-	var caption = Label.new()
-	caption.text = "Разрешение экрана"
-	settings.add_child(caption)
-	settings.add_child(picker)
-	decorate(picker,false)
-	for resolution in SIZES:
-		picker.add_item("%d × %d" % [resolution.x,resolution.y])
-		if resolution == selected_size:
-			picker.select(picker.item_count-1)
-	picker.item_selected.connect(select_size)
-	add_volume_slider("Музыка", &"Music")
-	add_volume_slider("Звуки игры", &"Effects")
+	decorate(settings.picker,false)
 	menu_button(settings,"Назад",show_home)
 	show_home()
-
-func add_volume_slider(caption: String, bus: StringName):
-	var row = HBoxContainer.new()
-	settings.add_child(row)
-	var label = Label.new()
-	label.text = caption
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(label)
-	var percent = Label.new()
-	row.add_child(percent)
-	var slider = HSlider.new()
-	slider.value = AudioSettings.volume(bus)
-	percent.text = "%d%%" % int(slider.value)
-	settings.add_child(slider)
-	slider.value_changed.connect(func(value):
-		AudioSettings.set_volume(bus, int(value))
-		percent.text = "%d%%" % int(value)
-		if bus == &"Effects" and not $EffectsPreview.playing:
-			$EffectsPreview.play()
-	)
 
 func build_landscape():
 	rng.seed = 142
@@ -146,7 +106,7 @@ func menu_button(parent,caption,callback,primary=false) -> Button:
 func show_settings():
 	navigation.hide()
 	settings.show()
-	picker.grab_focus()
+	settings.picker.grab_focus()
 
 func show_home():
 	levels.hide()
@@ -158,24 +118,6 @@ func show_levels():
 	navigation.hide()
 	levels.show()
 	levels.get_child(0).grab_focus()
-
-func apply_size(resolution: Vector2i):
-	selected_size = resolution
-	var window = get_window()
-	# Keep the render target at the selected resolution even in an editor-owned window.
-	window.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
-	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-	window.content_scale_size = resolution
-	if window.mode != Window.MODE_WINDOWED:
-		window.mode = Window.MODE_WINDOWED
-	window.size = resolution
-
-func select_size(index):
-	var resolution = SIZES[index]
-	apply_size(resolution)
-	var config = ConfigFile.new()
-	config.set_value("display","size",resolution)
-	config.save(SETTINGS)
 
 func begin(index: int):
 	if starting:

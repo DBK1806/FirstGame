@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 func start(level: PackedScene):
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 100
 	var veil = ColorRect.new()
 	add_child(veil)

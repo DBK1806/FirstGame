@@ -51,7 +51,7 @@ func _ready():
 	play_button = menu_button(navigation,"Начать игру",show_levels,true)
 	var completed = Campaign.completed()
 	for i in mini(completed+1,Campaign.SCENES.size()):
-		var caption_text = "%s · %s" % [["I","II","III","IV"][i],Campaign.NAMES[i]]
+		var caption_text = "%s · %s" % [["I","II","III","IV","V"][i],Campaign.NAMES[i]]
 		menu_button(levels,caption_text+("  ✓" if i < completed else ""),begin.bind(i),i == completed)
 	menu_button(levels,"Назад",show_home)
 	settings_button = menu_button(navigation,"Настройки",show_settings)
@@ -73,7 +73,7 @@ func build_landscape():
 	box(self,Vector3.DOWN*0.18,Vector3(100,0.36,100),MOSS,"grass")
 	for col in range(-4,5):
 		for row in range(-1,4):
-			var p = Vector3(col*5,0.03,row*3.2+3.6)
+			var p = Vector3(col*5,0.03,row*3.2+4.2)
 			if col in [1,2] and row < 1:
 				continue
 			var tone = ["a3984d","819349","b49754","9a9d59"][rng.randi_range(0,3)]
@@ -82,7 +82,7 @@ func build_landscape():
 			for furrow in 9:
 				box(self,p+Vector3(furrow*0.49-1.96,0.045,0),Vector3(0.10,0.045,2.81),ridge,"field")
 	box(self,Vector3(1,0.04,-1.2),Vector3(34,0.08,0.75),"bea574","earth")
-	castle(Vector3(5,0,-2.7),2.0)
+	castle(Vector3(5,0,-3.6),2.0)
 	village()
 	for i in 108:
 		var p = Vector3(rng.randf_range(-21,21),0,rng.randf_range(-16,-6))

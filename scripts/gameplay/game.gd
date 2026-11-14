@@ -41,8 +41,9 @@ const CAMERA_OFFSET = Vector3(10,22,29)
 @export var mill_valley = false
 @export var three_fields = false
 @export var quarry = false
-@onready var level_number = 4 if quarry else (3 if three_fields else (2 if mill_valley else 1))
-@onready var health_table = [PASS_HEALTH,VALLEY_HEALTH,THREE_FIELDS_HEALTH,QUARRY_HEALTH][level_number-1]
+@export var dusk_ridge = false
+@onready var level_number = 5 if dusk_ridge else (4 if quarry else (3 if three_fields else (2 if mill_valley else 1)))
+@onready var health_table = [PASS_HEALTH,VALLEY_HEALTH,THREE_FIELDS_HEALTH,QUARRY_HEALTH,QUARRY_HEALTH][level_number-1]
 @onready var wave_count = health_table.size()
 var damage_dealt = 0.0
 var gold_earned = 0
@@ -91,8 +92,10 @@ func ground(cell):
 	return Vector3(cell.x,0,cell.y)
 
 func _ready():
+	const SettingsPanel = preload("res://scripts/ui/settings_panel.gd")
+	SettingsPanel.apply_size(get_window(),SettingsPanel.saved_size())
 	rng.seed = 1823 if mill_valley else 471
-	light_world(quarry)
+	light_world(quarry,dusk_ridge)
 	add_child(camera)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.position = CAMERA_OFFSET
@@ -114,11 +117,17 @@ func _ready():
 		corners = [Vector2i(-7,-8),Vector2i(-3,-8),Vector2i(-3,-5),Vector2i(-8,-5),
 			Vector2i(-8,1),Vector2i(-4,1),Vector2i(-4,6),Vector2i(1,6),Vector2i(1,3),
 			Vector2i(-1,3),Vector2i(-1,-2),Vector2i(2,-2),Vector2i(2,-6),Vector2i(7,-6)]
+	if dusk_ridge:
+		corners = [Vector2i(-9,5),Vector2i(-5,5),Vector2i(-5,1),Vector2i(-8,1),
+			Vector2i(-8,-5),Vector2i(-3,-5),Vector2i(-3,-1),Vector2i(1,-1),
+			Vector2i(1,5),Vector2i(4,5),Vector2i(4,-5),Vector2i(9,-5)]
 	route.append(corners[0])
 	for corner in corners.slice(1):
 		while route.back() != corner:
 			route.append(route.back() + (corner - route.back()).sign())
-	if quarry:
+	if dusk_ridge:
+		build_dusk_ridge()
+	elif quarry:
 		build_quarry()
 	elif three_fields:
 		build_three_fields()
@@ -131,7 +140,7 @@ func _ready():
 		for i in 3:
 			var pebble = Vector3(rng.randf_range(-0.43,0.43),0.057,rng.randf_range(-0.43,0.43))
 			box(self,ground(cell)+pebble,Vector3(0.17,0.014,0.08),"d3bd93").rotation.y = rng.randf()*PI
-	if not three_fields and not quarry:
+	if level_number <= 2:
 		build_meadow()
 	fort()
 	if mill_valley:
@@ -219,11 +228,128 @@ func build_quarry():
 	for p in [Vector2(-3.25,-2.9),Vector2(-4.35,-2.5)]:
 		tree(Vector3(p.x,0,p.y),0.83)
 	for p in [Vector2(-3.8,-1.7),Vector2(-4.9,-2.1),Vector2(1.35,0.35)]:
-		var shrub = group(Vector3(p.x,0,p.y))
-		for tuft in [Vector3(-0.17,0.14,0),Vector3(0.12,0.18,-0.07),Vector3(0.21,0.12,0.13)]:
-			cone(shrub,tuft,0.24,0.14,tuft.y*2,7,"677c46","needles")
+		bush(Vector3(p.x,0,p.y))
 
-func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: float) -> MeshInstance3D:
+func build_dusk_ridge():
+	box(self,Vector3(0,-0.54,-1),Vector3(23,0.92,21),"655a54","earth")
+	box(self,Vector3(0,-0.05,-1),Vector3(23,0.1,21),"798349","grass")
+	for cell in route:
+		for step in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+			var site = cell + step
+			if site in route or site in pads or near_spawn_gate(site):
+				continue
+			if site.x >= 7 and site.y <= -4:
+				continue
+			pads[site] = box(self,ground(site)+Vector3.UP*0.024,Vector3(0.90,0.048,0.90),"9da35c","grass")
+	var profiles = [
+		[Vector2(1,0),Vector2(0.83,0.25),Vector2(0.55,0.55),Vector2(0.31,0.81),Vector2(0.13,0.98),Vector2(0,1)],
+		[Vector2(1,0),Vector2(0.84,0.27),Vector2(0.72,0.66),Vector2(0.56,0.94),Vector2(0.39,1),Vector2(0,1.01)],
+		[Vector2(1,0),Vector2(0.87,0.32),Vector2(0.63,0.38),Vector2(0.47,0.73),Vector2(0.23,0.94),Vector2(0,1)]]
+	var peaks = [Vector3(-9.1,1.7,-8.15),Vector3(-7.35,3.35,-9.4),Vector3(-5.4,1.85,-8.2),
+		Vector3(-1.9,2.15,-9.25),Vector3(0.15,3.75,-8.35),Vector3(1.65,2.05,-6.15),Vector3(3.7,1.35,-9.8),
+		Vector3(-0.8,1.35,-4.3),Vector3(0.9,0.85,-4.5)]
+	for i in peaks.size():
+		var peak: Vector3 = peaks[i]
+		var base = group(Vector3(peak.x,0,peak.z))
+		base.rotation.y = rng.randf_range(-0.65,0.65) + (PI if i%2 else 0.0)
+		base.scale = Vector3(rng.randf_range(1.6,2.2),peak.y,rng.randf_range(0.85,1.15))
+		if i < 7:
+			base.scale *= Vector3(1.35,1,1.95)
+		var rock = quarry_rock(base,Vector3.ZERO,profiles[i%3],0.12,rng.randf_range(-0.40,0.40))
+		# Measure the rotated stone itself so empty corners do not squeeze the foothills.
+		var footprint = Rect2(Vector2(peak.x,peak.z),Vector2.ZERO)
+		for vertex in rock.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			var point: Vector3 = rock.to_global(vertex)
+			footprint = footprint.expand(Vector2(point.x,point.z))
+		var local_offset = footprint.position - Vector2(peak.x,peak.z)
+		while true:
+			if i in [1,3,6]:
+				base.position.z = -11.5 - local_offset.y + 0.0001
+			footprint.position = Vector2(base.position.x,base.position.z) + local_offset
+			if ridge_clear(footprint):
+				break
+			base.scale *= Vector3(0.9,1,0.9)
+			footprint.size *= 0.9
+			local_offset *= 0.9
+		if i == 5:
+			var summit = Vector3.ZERO
+			for vertex in rock.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				if vertex.y > summit.y:
+					summit = vertex
+			build_stork_nest(rock.to_global(summit)-Vector3.UP*0.055)
+	for hill in [Vector3(-7.6,0.65,7.7),Vector3(-5.1,0.42,8.35),Vector3(-5.6,0.60,-2.4),
+			Vector3(-10.3,0.83,-2.4),Vector3(7,0.72,6.1),Vector3(8.2,0.37,7.35)]:
+		var size = Vector3(rng.randf_range(1.9,3.1),hill.y*2,rng.randf_range(1.4,2.2))
+		var span = Vector2(size.x,size.z)
+		if ridge_clear(Rect2(Vector2(hill.x,hill.z)-span/2,span)):
+			oval(self,Vector3(hill.x,-0.12,hill.z),size,"74844c","grass")
+	for stand in [Vector2(-9,-7.2),Vector2(-4.1,-7.6),Vector2(2.6,-7.3),Vector2(5.7,-8),
+			Vector2(-10.1,0.3),Vector2(-9.8,7.7),Vector2(-2.8,7.5),Vector2(5.5,7.5),
+			Vector2(-1,-3.9),Vector2(7.4,-2.3)]:
+		for i in 6:
+			var a = i*TAU/6 + rng.randf_range(-0.22,0.22)
+			var p = Vector3(stand.x+0.88*cos(a),0,stand.y+0.62*sin(a))
+			if not ridge_clear(Rect2(p.x-0.59,p.z-0.59,1.18,1.18)):
+				continue
+			if i % 3 == 0:
+				bush(p)
+			else:
+				tree(p,rng.randf_range(0.65,1.12))
+	var spring = group(Vector3(10,0,-1.65))
+	var cliff = quarry_rock(spring,Vector3(0,0,-0.47),profiles[2],0.12)
+	cliff.scale = Vector3(1.28,1.75,0.91)
+	for side in [-1,1]:
+		var jamb = quarry_rock(spring,Vector3(side*0.51,0,0.50),profiles[1],0.10)
+		jamb.scale = Vector3(0.31,0.81,0.56)
+	var lintel = quarry_rock(spring,Vector3(0,0.63,0.44),profiles[1],0.09)
+	lintel.scale = Vector3(0.88,0.42,0.57)
+	oval(spring,Vector3(0,0.43,0.38),Vector3(0.92,0.59,0.21),"28282c")
+	create_stream(PackedVector3Array([Vector3(10,0.30,-1.28),Vector3(10,0.29,-0.96),
+		Vector3(10.02,0.26,-0.69),Vector3(10.06,0.12,-0.59),Vector3(10.1,0.04,-0.39),
+		Vector3(9.7,0.036,1.4),Vector3(10,0.036,3.1),Vector3(9.35,0.036,5.4),
+		Vector3(9.8,0.036,7.1),Vector3(10.2,0.036,9.5)]),4)
+
+func build_stork_nest(at: Vector3):
+	var nest = group(at)
+	nest.name = "StorkNest"
+	cone(nest,Vector3.ZERO,0.25,0.41,0.16,11,"705038","wood")
+	oval(nest,Vector3.UP*0.075,Vector3(0.66,0.1,0.6),"a88854")
+	for i in 26:
+		var angle = TAU*i/13 + 0.19*floori(i/13.0)
+		var stick = box(nest,Vector3(cos(angle)*0.36,0.10+0.041*floori(i/13.0),sin(angle)*0.36),
+			Vector3(0.048,0.042,0.31+0.05*sin(i)),"906d49" if i%3 else "684d38","wood")
+		stick.rotation = Vector3(0.13*sin(i*2),-angle,0)
+	var bird = limb_joint(nest,Vector3.UP*0.10)
+	bird.rotation.y = 1.22
+	for side in [-1,1]:
+		cone(bird,Vector3(side*0.065,0.19,0),0.019,0.025,0.37,7,"bf5745")
+	oval(bird,Vector3(0,0.45,-0.035),Vector3(0.29,0.32,0.52),"f1ecdb")
+	for side in [-1,1]:
+		oval(bird,Vector3(side*0.09,0.44,-0.15),Vector3(0.14,0.22,0.43),"353b42")
+		oval(bird,Vector3(side*0.10,0.48,-0.065),Vector3(0.14,0.19,0.28),"dddcd0")
+	var neck = limb_joint(bird,Vector3(0,0.50,0.135))
+	oval(neck,Vector3(0,0.16,0.035),Vector3(0.135,0.44,0.14),"f1ecdb")
+	oval(neck,Vector3(0,0.36,0.065),Vector3(0.17,0.17,0.23),"f1ecdb")
+	for side in [-1,1]:
+		oval(neck,Vector3(side*0.077,0.38,0.10),Vector3.ONE*0.035,"27282b")
+	cone(neck,Vector3(0,0.35,0.29),0.046,0.003,0.28,7,"d96a45").rotation.x = PI*0.53
+	var glance = neck.create_tween().set_loops().set_trans(Tween.TRANS_SINE)
+	glance.tween_interval(3.3)
+	glance.tween_property(neck,"rotation:y",-0.52,0.85)
+	glance.tween_property(neck,"rotation:x",0.28,0.65)
+	glance.tween_interval(1.2)
+	glance.tween_property(neck,"rotation",Vector3.ZERO,1.15)
+
+func ridge_clear(footprint: Rect2) -> bool:
+	if not Rect2(-11.5,-11.5,23,21).encloses(footprint):
+		return false
+	for cells in [pads.keys(),route]:
+		for cell in cells:
+			if footprint.intersects(Rect2(Vector2(cell)-Vector2.ONE*0.5,Vector2.ONE)):
+				return false
+	return true
+
+func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: float, lean: float = 0.0) -> MeshInstance3D:
 	# Short bevels between broad faces catch the low evening light.
 	var sides = 9
 	var phase = parent.position.x + origin.z
@@ -237,7 +363,7 @@ func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: 
 			var h = ring_point.y / profile.back().y
 			var r = ring_point.x*(1.0+irregularity*(sin(3*a+phase)+0.54*cos(4*a+h*2.8)))
 			var tilt = r * sin(a+phase) * 0.12 * minf(h*8.0,1)
-			mesh.add_vertex(Vector3(r*cos(a)+0.14*h*sin(phase),ring_point.y+tilt,r*sin(a)))
+			mesh.add_vertex(Vector3(r*cos(a)+h*(lean+0.14*sin(phase)),ring_point.y+tilt,r*sin(a)))
 		if level > 0:
 			for i in sides:
 				var low = (level-1)*sides
@@ -399,6 +525,10 @@ func build_stream():
 		Vector3(3.2,0.032,0),Vector3(3.65,0.032,1.8),Vector3(3.35,0.032,3.5),
 		Vector3(4.55,0.032,5.3),Vector3(4.45,0.032,7.9),Vector3(5.25,0.032,9.65),
 		Vector3(5.3,0.032,10)])
+	create_stream(centers)
+
+func create_stream(centers: PackedVector3Array, bank_start: int = 0):
+	var bed_count = centers.size()
 	var lip = centers[-1]
 	for i in range(1,11):
 		var t = i * 0.048
@@ -410,14 +540,15 @@ func build_stream():
 		strip.begin(Mesh.PRIMITIVE_TRIANGLES)
 		strip.set_material(water if is_water else mat("bba878","earth"))
 		var distance = 0.0
-		var count = centers.size() if is_water else 7
-		for i in count:
-			if i > 0:
+		var count = centers.size() if is_water else bed_count
+		var first = 0 if is_water else bank_start
+		for i in range(first,count):
+			if i > first:
 				distance += centers[i].distance_to(centers[i-1])
 			var tangent = centers[mini(i+1,centers.size()-1)] - centers[maxi(i-1,0)]
 			var across = Vector3(tangent.z,0,-tangent.x).normalized()
 			# Square both ends of the riverbed against the straight map edge.
-			if i == 0 or i >= 6:
+			if i == 0 or i >= bed_count-1:
 				across = Vector3.RIGHT
 			for side in [-1,1]:
 				var width = 0.32 if is_water else 0.425
@@ -427,8 +558,8 @@ func build_stream():
 					point.y -= 0.018
 				strip.set_uv(Vector2((side+1)*0.5,distance))
 				strip.add_vertex(point)
-			if i > 0:
-				var start = (i-1)*2
+			if i > first:
+				var start = (i-first-1)*2
 				for offset in [0,1,2,1,3,2]:
 					strip.add_index(start+offset)
 		strip.generate_normals()
@@ -857,7 +988,7 @@ func advance():
 	wave += 1
 	fighting = true
 	remaining = 5 + wave*2
-	if quarry:
+	if level_number >= 4:
 		remaining = 10 + (wave-1)*2
 	elif three_fields:
 		remaining = 9 + (wave-1)*2
@@ -1012,10 +1143,13 @@ func limb_joint(parent: Node3D, at: Vector3) -> Node3D:
 
 func spawn_enemy():
 	var n = group(ground(route.front()))
-	var brute = wave >= 3 and remaining%4 == 0
+	var ogre = dusk_ridge and ((wave in [6,12] and remaining == 1) or (wave == 12 and remaining == 17))
+	var brute = ogre or (wave >= 3 and remaining%4 == 0)
 	var body = Node3D.new()
 	n.add_child(body)
 	var skin = "788349" if not brute else "8d7057"
+	if ogre:
+		skin = "9a9b68"
 	var chest = limb_joint(body, Vector3.UP * 0.29)
 	var legs = []
 	var arms = []
@@ -1038,17 +1172,31 @@ func spawn_enemy():
 	box(chest,Vector3.UP*0.10,Vector3(0.33,0.34,0.24),"924938")
 	box(chest,Vector3.UP*0.38,Vector3(0.31,0.25,0.26),skin)
 	cone(chest,Vector3.UP*0.54,0.23,0.08,0.19,5,"484b46")
-	if brute:
+	if ogre:
+		body.scale = Vector3(2.55,1.85,2.15)
+		oval(chest,Vector3(0,0.08,0.035),Vector3(0.53,0.45,0.38),skin)
+		box(chest,Vector3(0,-0.025,0.035),Vector3(0.44,0.085,0.33),"694831","wood")
+		box(chest,Vector3(0,-0.025,0.21),Vector3(0.09,0.07,0.025),"c89a61")
+		oval(arms[0],Vector3.ZERO,Vector3(0.27,0.19,0.29),"626876")
+		for side in [-1,1]:
+			cone(chest,Vector3(side*0.105,0.37,0.15),0.038,0.006,0.11,6,"efe2b8")
+		var club = limb_joint(arms[1],Vector3(0,-0.22,0.12))
+		club.rotation.x = 1.14
+		cone(club,Vector3.UP*0.12,0.035,0.052,0.34,7,WOOD,"wood")
+		cone(club,Vector3.UP*0.34,0.085,0.12,0.24,7,"84634a","wood")
+	elif brute:
 		body.scale = Vector3.ONE*1.38
-	var hp = health_table[wave-1] * (2 if brute else 1)
+	var hp = health_table[wave-1] * (7 if ogre else (2 if brute else 1))
 	var mob = {"node":n,"body":body,"chest":chest,"legs":legs,"arms":arms,"guard_elbow":guard_elbow,
 		"phase_offset":rng.randf_range(0,TAU),"progress":0.0,"hp":hp,"max_hp":hp,
-		"brute":brute,"speed":1.0 if brute or wave <= 3 else 1.5}
+		"brute":brute,"ogre":ogre,"speed":0.75 if ogre else (1.0 if brute or wave <= 3 else 1.5)}
 	animate_gait(mob)
 	enemies.append(mob)
 
 func animate_gait(mob, shielding: bool = false):
 	var stride = 1.1 if mob.brute else 0.70
+	if mob.ogre:
+		stride = 1.5
 	var phase = mob.phase_offset + TAU * mob.progress / stride
 	var swing = sin(phase)
 	var transfer = cos(phase)
@@ -1070,6 +1218,14 @@ func animate_gait(mob, shielding: bool = false):
 	else:
 		mob.body.position.y = 0.05 + 0.045 * swing * swing
 		mob.chest.rotation.z = 0.0
+	if mob.ogre:
+		# Shift weight before lifting the opposite foot. The club lags behind the torso.
+		mob.body.position.x = -0.13*transfer
+		mob.body.position.y = 0.07 - 0.09*pow(absf(swing),6)
+		mob.chest.rotation = Vector3(0.17+0.06*absf(swing),0.22*swing,0.18*transfer)
+		mob.arms[1].rotation.x = -0.3 + 0.48*sin(phase-0.45)
+		for i in 2:
+			mob.legs[i].position.y += maxf(0,transfer*(1 if i == 1 else -1))*0.09
 	if shielding:
 		# Fold the forearm across the eyes in chest space so it follows the head.
 		var upper = Vector3(0.045,0.055,0.18).normalized()
@@ -1103,8 +1259,10 @@ func damage_enemy(enemy, amount: float):
 	enemy.hp -= amount
 	if enemy.hp <= 0:
 		var death_sound = $BruteFall if enemy.brute else $GoblinFall
+		if enemy.ogre:
+			death_sound = $OgreFall
 		death_sound.play()
-		var gold = BRUTE_REWARD if enemy.brute else KILL_REWARD
+		var gold = 12 if enemy.ogre else (BRUTE_REWARD if enemy.brute else KILL_REWARD)
 		show_reward(enemy.body.global_position + Vector3.UP * enemy.body.scale.y, gold)
 		enemy.node.queue_free()
 		enemies.erase(enemy)
@@ -1211,7 +1369,7 @@ func attack_gate(mob):
 	strike.parallel().tween_property(mob.chest, "rotation:x", 0.48, 0.12)
 	strike.tween_callback(func():
 		if not finished:
-			lives = maxi(0, lives - (2 if mob.brute else 1))
+			lives = maxi(0, lives - (4 if mob.ogre else (2 if mob.brute else 1)))
 			$GateStrike.play()
 			update_gate_damage()
 			if lives == 0:

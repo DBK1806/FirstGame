@@ -68,7 +68,7 @@ func group(pos):
 	node.position = pos
 	return node
 
-func light_world(evening: bool = false):
+func light_world(evening: bool = false, dusk: bool = false):
 	var env = WorldEnvironment.new()
 	env.environment = Environment.new()
 	env.environment.background_mode = Environment.BG_COLOR
@@ -88,7 +88,42 @@ func light_world(evening: bool = false):
 		sun.light_color = Color("ffbb88")
 		sun.light_energy = 0.82
 	sun.shadow_enabled = true
+	if dusk:
+		env.environment.background_color = Color("514c68")
+		env.environment.ambient_light_color = Color("a9bce4")
+		env.environment.ambient_light_energy = 0.45
+		sun.rotation_degrees = Vector3(-15,-68,0)
+		sun.light_color = Color("f5a58b")
+		sun.light_energy = 0.43
 	add_child(sun)
+
+func oval(parent, at: Vector3, size: Vector3, tone: String, surface = ""):
+	var shape = SphereMesh.new()
+	shape.radial_segments = 10
+	shape.rings = 4
+	mesh_part(parent,shape,at,tone,surface).scale = size
+
+func bush(at: Vector3):
+	var shrub = group(at)
+	shrub.scale = Vector3.ONE*rng.randf_range(0.75,1.3)
+	shrub.rotation.y = rng.randf()*TAU
+	var leaves = ["63814a","77924e","526e46","75834c"][rng.randi_range(0,3)]
+	oval(shrub,Vector3(0,0.22,0),Vector3(0.65,0.52,0.57),leaves,"needles")
+	for side in [-1,1]:
+		oval(shrub,Vector3(side*0.24,0.14,0.05),Vector3(0.42,0.33,0.38),leaves,"needles")
+	if rng.randf() < 0.5:
+		for i in rng.randi_range(4,11):
+			var lobe = rng.randi_range(-1,1)
+			var center = Vector3(0,0.22,0) if lobe == 0 else Vector3(lobe*0.24,0.14,0.05)
+			var radii = Vector3(0.325,0.26,0.285) if lobe == 0 else Vector3(0.21,0.165,0.19)
+			var angle = rng.randf()*TAU
+			var height = rng.randf_range(0.08,0.98)
+			var spread = sqrt(1.0-height*height)
+			var outward = Vector3(cos(angle)*spread,height,sin(angle)*spread)
+			if lobe != 0:
+				outward.x = lobe*absf(outward.x)
+			var tone = ["ba3934","d74937","a93239"][rng.randi_range(0,2)]
+			oval(shrub,center+radii*outward,Vector3.ONE*rng.randf_range(0.055,0.082),tone)
 
 func tree(p,s):
 	var n = group(p)

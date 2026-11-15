@@ -21,6 +21,7 @@ config/icon="res://assets/icons/icon.svg"
 [autoload]
 
 AudioSettings="*res://scripts/audio/audio_settings.gd"
+DisplaySettings="*res://scripts/ui/display_settings.gd"
 
 [display]
 

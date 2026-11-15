@@ -1,6 +1,5 @@
 extends VBoxContainer
 
-const SETTINGS = "user://display.cfg"
 const SIZES = [Vector2i(800,600), Vector2i(1024,768), Vector2i(1280,720),
 	Vector2i(1280,800), Vector2i(1366,768), Vector2i(1600,900),
 	Vector2i(1920,1080), Vector2i(1980,1080), Vector2i(2560,1440)]
@@ -9,11 +8,9 @@ var picker = OptionButton.new()
 var preview: AudioStreamPlayer
 
 static func saved_size() -> Vector2i:
-	var config = ConfigFile.new()
-	if config.load(SETTINGS) == OK:
-		var saved = config.get_value("display","size")
-		if saved in SIZES:
-			return saved
+	var saved = DisplaySettings.config.get_value("display","size",Vector2i(1280,800))
+	if saved in SIZES:
+		return saved
 	return Vector2i(1280,800)
 
 func _ready():
@@ -31,8 +28,35 @@ func _ready():
 		if resolution == current:
 			picker.select(picker.item_count-1)
 	picker.item_selected.connect(select_size)
+	add_display_slider("Яркость","brightness")
+	add_display_slider("Гамма","gamma")
 	add_volume_slider("Музыка", &"Music")
 	add_volume_slider("Звуки игры", &"Effects")
+
+func add_display_slider(caption: String,key: String):
+	var row = HBoxContainer.new()
+	add_child(row)
+	var label = Label.new()
+	label.text = caption
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	var readout = Label.new()
+	row.add_child(readout)
+	var slider = HSlider.new()
+	slider.name = key.capitalize()
+	var limits: Vector2 = DisplaySettings.LIMITS[key]
+	slider.min_value = limits.x
+	slider.max_value = limits.y
+	slider.step = 0.05
+	slider.value = DisplaySettings.value(key)
+	add_child(slider)
+	var update_text = func(amount: float):
+		readout.text = ("%d%%" % roundi(amount*100)) if key == "brightness" else ("%.2f" % amount).replace(".",",")
+	update_text.call(slider.value)
+	slider.value_changed.connect(func(amount: float):
+		DisplaySettings.set_value(key,amount)
+		update_text.call(amount)
+	)
 
 func add_volume_slider(caption: String, bus: StringName):
 	var row = HBoxContainer.new()
@@ -66,7 +90,5 @@ static func apply_size(window: Window,resolution: Vector2i):
 func select_size(index):
 	var resolution = SIZES[index]
 	apply_size(get_window(),resolution)
-	var config = ConfigFile.new()
-	config.set_value("display","size",resolution)
-	config.save(SETTINGS)
+	DisplaySettings.save_size(resolution)
 

@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/main.tscn" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/music/stone_choir.wav" id="2"]
+[ext_resource type="AudioStreamWAV" path="res://assets/audio/sfx/reaper_fall.wav" id="3"]
+
+[node name="Последний дозор" instance=ExtResource("1")]
+cemetery_stage = 5
+
+[node name="BackgroundMusic" parent="." index="9"]
+stream = ExtResource("2")
+
+[node name="ReaperFall" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3")
+bus = &"Effects"
+volume_db = -7.0

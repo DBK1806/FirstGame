@@ -27,6 +27,13 @@ func _ready():
 	resume_button.text = "Продолжить"
 	navigation.add_child(resume_button)
 	resume_button.pressed.connect(set_paused.bind(false))
+	var restart = Button.new()
+	restart.text = "Начать уровень заново"
+	navigation.add_child(restart)
+	restart.pressed.connect(func():
+		get_tree().paused = false
+		get_tree().reload_current_scene()
+	)
 	settings_button.text = "Настройки"
 	navigation.add_child(settings_button)
 	settings_button.pressed.connect(show_settings.bind(true))
@@ -47,7 +54,7 @@ func _ready():
 	back.text = "Назад"
 	settings.add_child(back)
 	back.pressed.connect(show_settings.bind(false))
-	for button in [resume_button, settings_button, home, back]:
+	for button in [resume_button, restart, settings_button, home, back]:
 		button.custom_minimum_size.y = 48
 		button.add_theme_font_size_override("font_size", 21)
 	home.pressed.connect(func():

@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/main.tscn" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/music/stone_choir.wav" id="2"]
+
+[node name="Могилы павших" instance=ExtResource("1")]
+cemetery_stage = 3
+
+[node name="BackgroundMusic" parent="." index="9"]
+stream = ExtResource("2")

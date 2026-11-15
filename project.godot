@@ -11,6 +11,9 @@ config_version=5
 [application]
 
 config/name="FirstGame"
+config/name.playtest="Стражи перевала"
+config/use_custom_user_dir.playtest=true
+config/custom_user_dir_name.playtest="StrazhiPerevala/Playtest"
 run/main_scene="res://scenes/ui/menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://assets/icons/icon.svg"
@@ -32,4 +35,5 @@ window/stretch/aspect="expand"
 
 [rendering]
 
+renderer/rendering_method.playtest="gl_compatibility"
 rendering_device/driver.windows="d3d12"

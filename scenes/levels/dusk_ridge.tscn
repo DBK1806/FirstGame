@@ -3,7 +3,7 @@
 [ext_resource type="PackedScene" path="res://scenes/levels/main.tscn" id="1"]
 [ext_resource type="AudioStream" path="res://assets/audio/sfx/ogre_fall.wav" id="2"]
 
-[node name="Сумеречный кряж" instance=ExtResource("1")]
+[node name="Горный проход" instance=ExtResource("1")]
 dusk_ridge = true
 
 [node name="OgreFall" type="AudioStreamPlayer" parent="."]

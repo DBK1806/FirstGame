@@ -7,6 +7,7 @@ const WOOD = "67452e"
 const GOLD = "e7b75c"
 # Repeats per world unit keep terrain detail continuous across neighboring cells.
 const SURFACES = {
+	"concrete": [preload("res://shaders/concrete.tres"), 1.55],
 	"needles": [preload("res://assets/textures/needles.png"), 0.7],
 	"grass": [preload("res://assets/textures/meadow.png"), 0.43],
 	"earth": [preload("res://assets/textures/earth.png"), 0.65],
@@ -34,7 +35,7 @@ func mat(tone, surface = ""):
 				m.uv1_scale = Vector3(2.0,1.3,1.0)
 			else:
 				m.uv1_triplanar = true
-				m.uv1_world_triplanar = surface != "wood"
+				m.uv1_world_triplanar = surface not in ["wood","concrete"]
 				m.uv1_triplanar_sharpness = 14.0
 				m.uv1_scale = Vector3.ONE * pattern[1]
 		materials[key] = m
@@ -101,7 +102,9 @@ func oval(parent, at: Vector3, size: Vector3, tone: String, surface = ""):
 	var shape = SphereMesh.new()
 	shape.radial_segments = 10
 	shape.rings = 4
-	mesh_part(parent,shape,at,tone,surface).scale = size
+	var part = mesh_part(parent,shape,at,tone,surface)
+	part.scale = size
+	return part
 
 func bush(at: Vector3):
 	var shrub = group(at)

@@ -1,12 +1,17 @@
 extends "res://scripts/world/scenery.gd"
 
 const Campaign = preload("res://scripts/gameplay/campaign.gd")
+const Cemetery = preload("res://scripts/world/cemetery.gd")
+const Undead = preload("res://scripts/gameplay/undead.gd")
+const Ballista = preload("res://scripts/gameplay/ballista.gd")
 const QUARRY_HEALTH = [7,9,11,15,20,25,30,37,45,54,64,74]
 
 const COST = 30
 const RANGE = 4
 const KILL_REWARD = 3
 const BRUTE_REWARD = 6
+const UNDEAD_REWARDS = {"skeleton":3,"zombie":7,"gargoyle":30,"death":30}
+const Reaper = preload("res://scripts/gameplay/reaper.gd")
 const WAVE_REWARD = 8
 const PASS_HEALTH = [4, 5, 7, 11, 17, 20]
 const VALLEY_HEALTH = [6, 8, 12, 17, 23, 30, 38, 48]
@@ -25,15 +30,15 @@ const BLAST_RADIUS = 1.5
 const FLIGHT_TIME = 0.90
 const GRAVITY = Vector3.DOWN * 19.0
 const GATE_OFFSET = 2.12
-enum Tower { ARCHER, MORTAR, MILL }
-const TOWER_NAMES = ["Лучники","Мортира","Ветряная мельница"]
-const TOWER_ROLES = ["Стрела в одну цель","Ядро по площади","Замедление по области"]
-const TOWER_COSTS = [COST,MORTAR_COST,40]
-const TOWER_RANGES = [RANGE,MORTAR_RANGE,3]
-const TOWER_ICONS = [preload("res://assets/icons/archer_icon.svg"),preload("res://assets/icons/mortar_icon.svg"),preload("res://assets/icons/windmill_icon.svg")]
+enum Tower { ARCHER, MORTAR, MILL, BALLISTA }
+const TOWER_NAMES = ["Лучники","Мортира","Ветряная мельница","Баллиста"]
+const TOWER_ROLES = ["Стрела в одну цель","Ядро по площади","Замедление по области","Болт пробивает врагов в ряд"]
+const TOWER_COSTS = [COST,MORTAR_COST,40,65]
+const TOWER_RANGES = [RANGE,MORTAR_RANGE,3,5]
+const TOWER_ICONS = [preload("res://assets/icons/archer_icon.svg"),preload("res://assets/icons/mortar_icon.svg"),preload("res://assets/icons/windmill_icon.svg"),preload("res://assets/icons/ballista_icon.svg")]
 const MILL_SLOW_PERCENT = 25
-const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,60,45]
-const ELITE_RANGES = [RANGE,4.5,3.5]
+const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,60,45,75]
+const ELITE_RANGES = [RANGE,4.5,3.5,6]
 const HEAVY_SHELL_DAMAGE = 8
 const HEAVY_BLAST_RADIUS = 2
 const STRONG_WIND_PERCENT = 40
@@ -42,8 +47,10 @@ const CAMERA_OFFSET = Vector3(10,22,29)
 @export var three_fields = false
 @export var quarry = false
 @export var dusk_ridge = false
-@onready var level_number = 5 if dusk_ridge else (4 if quarry else (3 if three_fields else (2 if mill_valley else 1)))
-@onready var health_table = [PASS_HEALTH,VALLEY_HEALTH,THREE_FIELDS_HEALTH,QUARRY_HEALTH,QUARRY_HEALTH][level_number-1]
+@export_range(0,5) var cemetery_stage: int = 0
+@onready var pad_color = "858c80" if cemetery_stage else "9da35c"
+@onready var level_number = 5+cemetery_stage if cemetery_stage else (5 if dusk_ridge else (4 if quarry else (3 if three_fields else (2 if mill_valley else 1))))
+@onready var health_table = Undead.HEALTH[cemetery_stage-1] if cemetery_stage else [PASS_HEALTH,VALLEY_HEALTH,THREE_FIELDS_HEALTH,QUARRY_HEALTH,QUARRY_HEALTH][level_number-1]
 @onready var wave_count = health_table.size()
 var damage_dealt = 0.0
 var gold_earned = 0
@@ -69,6 +76,8 @@ var ui = CanvasLayer.new()
 var health_bars = Node2D.new()
 var rewards = Node2D.new()
 var gate_attackers = 0
+var reaper_pending = false
+var boss_warning: Label
 var gate_boards = []
 var gate_strap: MeshInstance3D
 var shells_in_flight = 0
@@ -82,7 +91,7 @@ var upgrade_title = Label.new()
 var upgrade_action = Button.new()
 var upgrade_stats = Label.new()
 var upgrade_kind = Tower.ARCHER
-var upgraded = [false,false,false]
+var upgraded = [false,false,false,false]
 var tower_details = RichTextLabel.new()
 var hovered = Vector2i(999,999)
 var ring = Node3D.new()
@@ -95,7 +104,8 @@ func _ready():
 	const SettingsPanel = preload("res://scripts/ui/settings_panel.gd")
 	SettingsPanel.apply_size(get_window(),SettingsPanel.saved_size())
 	rng.seed = 1823 if mill_valley else 471
-	light_world(quarry,dusk_ridge)
+	if not cemetery_stage:
+		light_world(quarry,dusk_ridge)
 	add_child(camera)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.position = CAMERA_OFFSET
@@ -121,11 +131,20 @@ func _ready():
 		corners = [Vector2i(-9,5),Vector2i(-5,5),Vector2i(-5,1),Vector2i(-8,1),
 			Vector2i(-8,-5),Vector2i(-3,-5),Vector2i(-3,-1),Vector2i(1,-1),
 			Vector2i(1,5),Vector2i(4,5),Vector2i(4,-5),Vector2i(9,-5)]
+	if cemetery_stage:
+		coins = 125
+		$GoblinFall.stream = preload("res://assets/audio/sfx/bone_scatter.wav")
+		$BruteFall.stream = preload("res://assets/audio/sfx/zombie_groan.wav")
+		corners = Cemetery.ROUTES[cemetery_stage-1]
 	route.append(corners[0])
 	for corner in corners.slice(1):
 		while route.back() != corner:
 			route.append(route.back() + (corner - route.back()).sign())
-	if dusk_ridge:
+	if cemetery_stage:
+		var cemetery = Cemetery.new()
+		add_child(cemetery)
+		cemetery.build(self,cemetery_stage-1)
+	elif dusk_ridge:
 		build_dusk_ridge()
 	elif quarry:
 		build_quarry()
@@ -136,7 +155,7 @@ func _ready():
 		box(self,Vector3(0,-0.47,0),Vector3(19.08,0.8,depth+0.08),"796d50","earth")
 		box(self,Vector3(0,-0.105,0),Vector3(19,0.21,depth),MOSS,"grass")
 	for cell in route:
-		box(self,ground(cell)+Vector3.UP*0.025,Vector3(1.01,0.05,1.01),"bea574","earth")
+		box(self,ground(cell)+Vector3.UP*0.025,Vector3(1.01,0.05,1.01),"a8a0a4" if cemetery_stage else "bea574","stone" if cemetery_stage else "earth")
 		for i in 3:
 			var pebble = Vector3(rng.randf_range(-0.43,0.43),0.057,rng.randf_range(-0.43,0.43))
 			box(self,ground(cell)+pebble,Vector3(0.17,0.014,0.08),"d3bd93").rotation.y = rng.randf()*PI
@@ -145,7 +164,8 @@ func _ready():
 	fort()
 	if mill_valley:
 		build_windmill()
-	add_child(preload("res://scripts/world/wildlife.gd").new())
+	if not cemetery_stage:
+		add_child(preload("res://scripts/world/wildlife.gd").new())
 	add_child(ring)
 	var outline = TorusMesh.new()
 	outline.inner_radius = RANGE-0.025
@@ -248,6 +268,7 @@ func build_dusk_ridge():
 	var peaks = [Vector3(-9.1,1.7,-8.15),Vector3(-7.35,3.35,-9.4),Vector3(-5.4,1.85,-8.2),
 		Vector3(-1.9,2.15,-9.25),Vector3(0.15,3.75,-8.35),Vector3(1.65,2.05,-6.15),Vector3(3.7,1.35,-9.8),
 		Vector3(-0.8,1.35,-4.3),Vector3(0.9,0.85,-4.5)]
+	var rock_footprints: Array[Rect2] = []
 	for i in peaks.size():
 		var peak: Vector3 = peaks[i]
 		var base = group(Vector3(peak.x,0,peak.z))
@@ -271,6 +292,7 @@ func build_dusk_ridge():
 			base.scale *= Vector3(0.9,1,0.9)
 			footprint.size *= 0.9
 			local_offset *= 0.9
+		rock_footprints.append(footprint)
 		if i == 5:
 			var summit = Vector3.ZERO
 			for vertex in rock.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
@@ -283,13 +305,13 @@ func build_dusk_ridge():
 		var span = Vector2(size.x,size.z)
 		if ridge_clear(Rect2(Vector2(hill.x,hill.z)-span/2,span)):
 			oval(self,Vector3(hill.x,-0.12,hill.z),size,"74844c","grass")
-	for stand in [Vector2(-9,-7.2),Vector2(-4.1,-7.6),Vector2(2.6,-7.3),Vector2(5.7,-8),
+	for stand in [Vector2(-10.3,-6.1),Vector2(-4.1,-7.6),Vector2(2.6,-7.3),Vector2(5.7,-8),
 			Vector2(-10.1,0.3),Vector2(-9.8,7.7),Vector2(-2.8,7.5),Vector2(5.5,7.5),
-			Vector2(-1,-3.9),Vector2(7.4,-2.3)]:
+			Vector2(-1,-3.9),Vector2(7.4,-2.3),Vector2(-2,2.6)]:
 		for i in 6:
 			var a = i*TAU/6 + rng.randf_range(-0.22,0.22)
 			var p = Vector3(stand.x+0.88*cos(a),0,stand.y+0.62*sin(a))
-			if not ridge_clear(Rect2(p.x-0.59,p.z-0.59,1.18,1.18)):
+			if not ridge_clear(Rect2(p.x-0.60,p.z-0.60,1.20,1.20),rock_footprints):
 				continue
 			if i % 3 == 0:
 				bush(p)
@@ -340,9 +362,12 @@ func build_stork_nest(at: Vector3):
 	glance.tween_interval(1.2)
 	glance.tween_property(neck,"rotation",Vector3.ZERO,1.15)
 
-func ridge_clear(footprint: Rect2) -> bool:
+func ridge_clear(footprint: Rect2, rocks: Array[Rect2] = []) -> bool:
 	if not Rect2(-11.5,-11.5,23,21).encloses(footprint):
 		return false
+	for rock in rocks:
+		if footprint.intersects(rock):
+			return false
 	for cells in [pads.keys(),route]:
 		for cell in cells:
 			if footprint.intersects(Rect2(Vector2(cell)-Vector2.ONE*0.5,Vector2.ONE)):
@@ -599,11 +624,18 @@ func create_stream(centers: PackedVector3Array, bank_start: int = 0):
 func fit_camera():
 	var size = get_viewport().get_visible_rect().size
 	camera.size = maxf(17.5,24.0*size.y/maxf(size.x,1)) * camera_zoom
+	if cemetery_stage:
+		camera.size = maxf(20.5,(Cemetery.WIDTHS[cemetery_stage-1]+8)*size.y/maxf(size.x,1))*camera_zoom
+		if cemetery_stage >= 4:
+			camera.size = maxf(camera.size,(Cemetery.DEPTHS[cemetery_stage-1]*0.63+Cemetery.WIDTHS[cemetery_stage-1]*0.2+7)*camera_zoom)
 
 func pan_camera(offset: Vector3):
 	var focus = camera.position - CAMERA_OFFSET + offset
 	var depth = 9.0 if level_number >= 2 else 5.0
-	camera.position = CAMERA_OFFSET + Vector3(clampf(focus.x,-9,9),0,clampf(focus.z,-depth,depth))
+	if cemetery_stage >= 4:
+		depth = Cemetery.DEPTHS[cemetery_stage-1]*0.5
+	var width = Cemetery.WIDTHS[cemetery_stage-1]*0.5 if cemetery_stage else 9.0
+	camera.position = CAMERA_OFFSET + Vector3(clampf(focus.x,-width,width),0,clampf(focus.z,-depth,depth))
 
 func ground_at_screen(point: Vector2) -> Vector3:
 	var origin = camera.project_ray_origin(point)
@@ -640,9 +672,10 @@ func build_windmill():
 func fort():
 	if three_fields:
 		village([Vector2(6.1,1.1),Vector2(7.6,2.4),Vector2(8.25,0.8),Vector2(-1.25,-4.4),Vector2(-1.35,-2.7)])
-	else:
+	elif not cemetery_stage:
 		village()
-	castle(ground(route.back()),1.0)
+	if not cemetery_stage:
+		castle(ground(route.back()),1.0)
 	# A timber outwork brings the point of impact in front of the corner tower.
 	var outer_gate = group(ground(route.back()) + Vector3.LEFT * (GATE_OFFSET - 0.34))
 	for z in [-0.49, 0.49]:
@@ -692,7 +725,7 @@ func build_ui():
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var top = hud_panel(root,false)
 	var title = Label.new()
-	title.text = Campaign.NAMES[level_number-1].to_upper()
+	title.text = Campaign.level_title(level_number).to_upper()
 	label_style(title,24,"f3dfb7")
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title)
@@ -703,6 +736,17 @@ func build_ui():
 	label_style(stats,20,"f7e9c8")
 	top.add_child(stats)
 	build_speed_controls(root)
+	if cemetery_stage == 5:
+		boss_warning = Label.new()
+		root.add_child(boss_warning)
+		boss_warning.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		boss_warning.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		boss_warning.offset_top = 92
+		boss_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label_style(boss_warning,24,"ffdab0")
+		boss_warning.add_theme_stylebox_override("normal",panel_color("422b39f0","af815d"))
+		boss_warning.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		boss_warning.hide()
 	var bottom = hud_panel(root,true)
 	build_tower_row(bottom,false)
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -777,10 +821,10 @@ func build_tower_row(bottom, upgrades: bool):
 	panel.hide()
 	var choices = ButtonGroup.new()
 	for kind in Tower.values():
-		if kind == Tower.MILL and level_number < 3:
+		if not tower_available(kind):
 			continue
 		var tile = Button.new()
-		tile.name = ["ArcherTile","MortarTile","MillTile"][kind]
+		tile.name = ["ArcherTile","MortarTile","MillTile","BallistaTile"][kind]
 		if not upgrades:
 			tile.toggle_mode = true
 			tile.button_group = choices
@@ -867,8 +911,13 @@ func archer_interval() -> float:
 func tower_range(kind: int) -> float:
 	return ELITE_RANGES[kind] if upgraded[kind] else TOWER_RANGES[kind]
 
+func tower_available(kind: int) -> bool:
+	return (kind != Tower.MILL or level_number >= 3) and (kind != Tower.BALLISTA or level_number >= 7)
+
 func refresh_upgrade():
 	match upgrade_kind:
+		Tower.BALLISTA:
+			upgrade_stats.text = "Урон по каждой цели  %d   ·   Дальность  %d кл." % [Ballista.DAMAGE[1],ELITE_RANGES[Tower.BALLISTA]]
 		Tower.ARCHER:
 			upgrade_stats.text = "Урон  %s   ·   Выстрел каждые %s с" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL)]
 		Tower.MORTAR:
@@ -881,7 +930,7 @@ func refresh_upgrade():
 
 func buy_upgrade():
 	var price = UPGRADE_COSTS[upgrade_kind]
-	if finished or upgraded[upgrade_kind] or coins < price or (upgrade_kind == Tower.MILL and level_number < 3):
+	if finished or upgraded[upgrade_kind] or coins < price or not tower_available(upgrade_kind):
 		return
 	coins -= price
 	upgraded[upgrade_kind] = true
@@ -897,7 +946,9 @@ func reinforce_tower(tower, animate: bool):
 	if tower.kind == Tower.ARCHER:
 		reinforce_archer(base,animate)
 		return
-	if tower.kind == Tower.MORTAR:
+	if tower.kind == Tower.BALLISTA:
+		Ballista.reinforce(self,tower.barrel)
+	elif tower.kind == Tower.MORTAR:
 		var tube = tower.barrel.get_node("Tube")
 		tube.scale = Vector3(1.2,1.12,1.2)
 		for h in [0.18,0.42]:
@@ -937,6 +988,8 @@ func show_tower_details(kind: int):
 	var description: String
 	if kind == Tower.MILL:
 		description = "Замедление   [color=#ffd079]%d%%[/color]\nДействует, пока враг в радиусе" % (STRONG_WIND_PERCENT if upgraded[kind] else MILL_SLOW_PERCENT)
+	elif kind == Tower.BALLISTA:
+		description = "Урон по каждой цели   [color=#ffd079]%d[/color]\nВыстрел каждые   [color=#ffd079]%s с[/color]" % [Ballista.DAMAGE[int(upgraded[kind])],stat_text(Ballista.INTERVAL)]
 	else:
 		var mortar = kind == Tower.MORTAR
 		description = "Урон   [color=#ffd079]%s[/color]\nВыстрел каждые   [color=#ffd079]%s с[/color]" % [
@@ -951,13 +1004,20 @@ func show_tower_details(kind: int):
 	info_panel.position = Vector2(0,-info_panel.size.y-4)
 
 func draw_health_bars():
-	var width = clampf(get_viewport().get_visible_rect().size.y * 0.028, 16, 32)
-	var height = maxf(3, roundf(width * 0.14))
+	var normal_width = clampf(get_viewport().get_visible_rect().size.y * 0.028, 16, 32)
+	var height = maxf(3, roundf(normal_width * 0.14))
 	for mob in enemies:
-		var anchor = mob.body.global_position + Vector3.UP * (mob.body.scale.y * 0.94)
+		var reaper = mob.get("kind","") == "death"
+		var width = normal_width*2.8 if reaper else normal_width
+		var anchor = mob.body.global_position + Vector3.UP * (mob.body.scale.y * (1.31 if reaper else 0.94))
 		var pos = (camera.unproject_position(anchor) - Vector2(width * 0.5, height + 3)).round()
 		var ratio = float(mob.hp) / mob.max_hp
 		var fill = Color("#91c45c") if ratio > 0.5 else Color("#e6b553") if ratio > 0.25 else Color("#e36e50")
+		if reaper:
+			var label = "Мир духов" if mob.in_spirit else "Смерть"
+			health_bars.draw_string(ThemeDB.fallback_font,pos-Vector2(0,3),label,HORIZONTAL_ALIGNMENT_CENTER,width,13)
+			if mob.in_spirit:
+				fill = Color("#97d6ed")
 		health_bars.draw_rect(Rect2(pos - Vector2.ONE, Vector2(width + 2, height + 2)), Color("#29241e"))
 		health_bars.draw_rect(Rect2(pos, Vector2(width, height)), Color("#634c42"))
 		health_bars.draw_rect(Rect2(pos, Vector2(maxf(1, roundf(width * ratio)), height)), fill)
@@ -988,13 +1048,16 @@ func advance():
 	wave += 1
 	fighting = true
 	remaining = 5 + wave*2
-	if level_number >= 4:
+	if cemetery_stage:
+		remaining = 8+cemetery_stage+(wave-1)*2
+	elif level_number >= 4:
 		remaining = 10 + (wave-1)*2
 	elif three_fields:
 		remaining = 9 + (wave-1)*2
 	elif mill_valley:
 		remaining = roundi(remaining * 1.2)
 	spawn_clock = 0
+	reaper_pending = cemetery_stage == 5 and wave == wave_count
 	refresh()
 
 func mouse_cell(point = get_viewport().get_mouse_position()):
@@ -1027,7 +1090,7 @@ func _unhandled_input(event):
 		return
 	if event.button_index != MOUSE_BUTTON_LEFT:
 		return
-	if not pads.has(cell):
+	if not pads.has(cell) or not tower_available(selected_tower):
 		return
 	var price = TOWER_COSTS[selected_tower]
 	if coins < price:
@@ -1041,6 +1104,8 @@ func _unhandled_input(event):
 		build_slow_mill(n)
 	elif selected_tower == Tower.MORTAR:
 		tower.barrel = build_mortar(n)
+	elif selected_tower == Tower.BALLISTA:
+		tower.barrel = Ballista.build(self,n)
 	else:
 		turret(n,Vector3.ZERO,0.85)
 	if upgraded[selected_tower]:
@@ -1085,7 +1150,7 @@ func sell_tower(cell, point):
 	$BrickRubble.play()
 	selected.node.queue_free()
 	pads[selected.cell] = selected.pad
-	selected.pad.material_override = mat("9da35c","grass")
+	selected.pad.material_override = mat(pad_color,"grass")
 	hovered = Vector2i(999,999)
 	var refund = int(selected.price * 0.5)
 	coins += refund
@@ -1141,7 +1206,14 @@ func limb_joint(parent: Node3D, at: Vector3) -> Node3D:
 	joint.position = at
 	return joint
 
+func build_goblin_head(parent: Node3D, skin: String):
+	box(parent,Vector3.UP*0.38,Vector3(0.31,0.25,0.26),skin)
+	cone(parent,Vector3.UP*0.54,0.23,0.08,0.19,5,"484b46")
+
 func spawn_enemy():
+	if cemetery_stage:
+		enemies.append(Undead.spawn(self))
+		return
 	var n = group(ground(route.front()))
 	var ogre = dusk_ridge and ((wave in [6,12] and remaining == 1) or (wave == 12 and remaining == 17))
 	var brute = ogre or (wave >= 3 and remaining%4 == 0)
@@ -1170,8 +1242,7 @@ func spawn_enemy():
 			box(shoulder,Vector3(0,-0.21,0.065),Vector3(0.13,0.13,0.18),skin)
 		arms.append(shoulder)
 	box(chest,Vector3.UP*0.10,Vector3(0.33,0.34,0.24),"924938")
-	box(chest,Vector3.UP*0.38,Vector3(0.31,0.25,0.26),skin)
-	cone(chest,Vector3.UP*0.54,0.23,0.08,0.19,5,"484b46")
+	build_goblin_head(chest,skin)
 	if ogre:
 		body.scale = Vector3(2.55,1.85,2.15)
 		oval(chest,Vector3(0,0.08,0.035),Vector3(0.53,0.45,0.38),skin)
@@ -1194,6 +1265,9 @@ func spawn_enemy():
 	enemies.append(mob)
 
 func animate_gait(mob, shielding: bool = false):
+	if cemetery_stage:
+		Undead.animate(mob,shielding)
+		return
 	var stride = 1.1 if mob.brute else 0.70
 	if mob.ogre:
 		stride = 1.5
@@ -1244,7 +1318,7 @@ func animate_gait(mob, shielding: bool = false):
 func shoot(tower,enemy):
 	$BowRelease.play()
 	var start = tower.node.position + Vector3.UP*1.44
-	var end = enemy.node.position + Vector3.UP*0.44
+	var end = enemy.body.global_position + Vector3.UP*enemy.body.scale.y*0.44
 	var arrow = box(self,start,Vector3(0.045,0.045,0.39),"efc36b")
 	arrow.look_at(end)
 	var tween = create_tween()
@@ -1253,16 +1327,22 @@ func shoot(tower,enemy):
 	damage_enemy(enemy, archer_damage())
 
 func damage_enemy(enemy, amount: float):
-	if finished or enemy.hp <= 0:
+	if finished or enemy.hp <= 0 or enemy.get("in_spirit",false):
 		return
 	damage_dealt += minf(amount,enemy.hp)
 	enemy.hp -= amount
 	if enemy.hp <= 0:
 		var death_sound = $BruteFall if enemy.brute else $GoblinFall
-		if enemy.ogre:
+		if enemy.ogre and dusk_ridge:
 			death_sound = $OgreFall
+		elif cemetery_stage and enemy.kind == "gargoyle":
+			death_sound = $GargoyleFall
+		elif cemetery_stage and enemy.kind == "death":
+			death_sound = $ReaperFall
 		death_sound.play()
 		var gold = 12 if enemy.ogre else (BRUTE_REWARD if enemy.brute else KILL_REWARD)
+		if cemetery_stage:
+			gold = UNDEAD_REWARDS[enemy.kind]
 		show_reward(enemy.body.global_position + Vector3.UP * enemy.body.scale.y, gold)
 		enemy.node.queue_free()
 		enemies.erase(enemy)
@@ -1358,6 +1438,8 @@ func update_gate_damage():
 			board.position.y = 0.10
 
 func attack_gate(mob):
+	if cemetery_stage:
+		mob.flight = 0.0
 	animate_gait(mob)
 	gate_attackers += 1
 	var body: Node3D = mob.body
@@ -1397,6 +1479,8 @@ func end_game(won):
 	if finished:
 		return
 	finished = true
+	if boss_warning:
+		boss_warning.hide()
 	Engine.time_scale = 1.0
 	speed_panel.hide()
 	fighting = false
@@ -1435,7 +1519,7 @@ func show_victory():
 	stack.add_child(title)
 	var summary = Label.new()
 	summary.text = "%s · отбито волн: %d\n\nУрон по монстрам: %s\nПобеждено гоблинов: %d\nЗаработано золота: %d\nПрочность ворот: %d / 12" % [
-		Campaign.NAMES[level_number-1],wave,stat_text(damage_dealt),monsters_defeated,gold_earned,lives]
+		Campaign.level_title(level_number),wave,stat_text(damage_dealt),monsters_defeated,gold_earned,lives]
 	label_style(summary,20,"f0e3c7")
 	stack.add_child(summary)
 	if level_number < Campaign.SCENES.size():
@@ -1479,7 +1563,7 @@ func update_range_preview(point: Vector2, over_ui: bool):
 		cell = empty
 	if cell != hovered:
 		if pads.has(hovered):
-			pads[hovered].material_override = mat("9da35c","grass")
+			pads[hovered].material_override = mat(pad_color,"grass")
 		hovered = cell
 	ring.visible = tower != null or pads.has(cell)
 	if ring.visible:
@@ -1495,11 +1579,21 @@ func update_range_preview(point: Vector2, over_ui: bool):
 		ring.scale = Vector3(factor, 1, factor)
 
 func movement_speed(mob) -> float:
+	if mob.get("in_spirit",false):
+		return mob.speed
+	var flying = cemetery_stage > 0 and mob.flight > 0
+	var speed: float = Undead.FLIGHT_SPEED if flying else mob.speed
 	for tower in towers:
 		if tower.kind == Tower.MILL and tower.node.position.distance_squared_to(mob.node.position) <= tower.range**2:
 			var percent = STRONG_WIND_PERCENT if upgraded[Tower.MILL] else MILL_SLOW_PERCENT
-			return mob.speed * (1.0 - percent / 100.0)
-	return mob.speed
+			var slow = percent / 100.0
+			if flying:
+				slow *= 0.5
+			var slowed = speed * (1.0-slow)
+			if cemetery_stage and mob.kind == "zombie":
+				return maxf(0.60,slowed)
+			return slowed
+	return speed
 
 func step_wave(delta):
 	health_bars.queue_redraw()
@@ -1508,8 +1602,25 @@ func step_wave(delta):
 		spawn_enemy()
 		remaining -= 1
 		spawn_clock = 0.64 if level_number >= 3 else 0.94
+		if reaper_pending and remaining == 0:
+			spawn_clock = 5.0
+			hint.text = "Последний отряд вышел. Приближается Смерть…"
+			message_time = 5.0
+	elif reaper_pending and remaining == 0 and spawn_clock <= 0:
+		reaper_pending = false
+		boss_warning.hide()
+		enemies.append(Reaper.spawn(self,2.5*Undead.gargoyle_hp(self)))
+		hint.text = "Смерть у ворот кладбища. В мире духов она неуязвима."
+		message_time = 5.0
+	if reaper_pending and remaining == 0:
+		boss_warning.text = "Идёт босс: Смерть  ·  %d с" % ceili(spawn_clock)
+		boss_warning.show()
 	for i in range(enemies.size()-1,-1,-1):
 		var mob = enemies[i]
+		if cemetery_stage and mob.kind == "gargoyle":
+			Undead.tick_flight(mob,delta)
+		elif cemetery_stage and mob.kind == "death":
+			Reaper.tick(mob,delta)
 		var speed = movement_speed(mob)
 		mob.progress += delta*speed
 		var index = floori(mob.progress)
@@ -1518,6 +1629,13 @@ func step_wave(delta):
 			mob.node.position = ground(route.back()) + Vector3.LEFT * GATE_OFFSET
 			mob.node.rotation.y = PI/2
 			enemies.remove_at(i)
+			if mob.get("kind","") == "death":
+				lives = 0
+				$GateStrike.play()
+				update_gate_damage()
+				end_game(false)
+				hint.text = "Смерть достигла замка. Оборона пала."
+				return
 			attack_gate(mob)
 		else:
 			var a = ground(route[index])
@@ -1533,17 +1651,22 @@ func step_wave(delta):
 			continue
 		var target = null
 		for mob in enemies:
+			if mob.get("in_spirit",false):
+				continue
 			if tower.node.position.distance_squared_to(mob.node.position) <= tower.range**2:
 				if target == null or mob.progress > target.progress:
 					target = mob
 		if target != null:
-			if tower.barrel:
+			if tower.kind == Tower.BALLISTA:
+				Ballista.fire(self,tower,target,Ballista.DAMAGE[int(upgraded[Tower.BALLISTA])])
+				tower.cool = Ballista.INTERVAL
+			elif tower.barrel:
 				launch_shell(tower,target)
 				tower.cool = MORTAR_INTERVAL
 			else:
 				shoot(tower,target)
 				tower.cool = archer_interval()
-	if remaining == 0 and enemies.is_empty() and gate_attackers == 0 and shells_in_flight == 0:
+	if remaining == 0 and not reaper_pending and enemies.is_empty() and gate_attackers == 0 and shells_in_flight == 0:
 		fighting = false
 		if wave == wave_count:
 			end_game(true)

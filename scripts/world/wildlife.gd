@@ -6,6 +6,8 @@ var bird_delay = 3.0
 var squirrel_delay = 8.0
 var snake_delay = 5.0
 var mole_delay = 7.0
+var goblin_delay = 6.0
+var goblin_side = -1
 var last_burrow = -1
 const BURROWS = [Vector2(3.3,3.6),Vector2(-6.3,-2.1),Vector2(0.2,-7.2),Vector2(2.8,7.5)]
 var last_trail = {}
@@ -73,6 +75,11 @@ func _ready():
 		,0.0,1.0,start.distance_to(end)/0.29)
 
 func _process(delta):
+	if map.dusk_ridge:
+		goblin_delay -= delta
+		if goblin_delay <= 0:
+			send_goblin()
+			goblin_delay = random.randf_range(18,32)
 	if map.quarry:
 		mole_delay -= delta
 		if mole_delay <= 0:
@@ -97,6 +104,28 @@ func pivot(parent: Node3D, offset: Vector3) -> Node3D:
 	parent.add_child(part)
 	part.position = offset
 	return part
+
+func send_goblin():
+	# Both starting points are on the ground behind the western cliff.
+	var start = Vector3(-8.95,0,-11.1) if goblin_side < 0 else Vector3(-6.55,0,-11.2)
+	var scout = pivot(self,start)
+	scout.name = "GoblinScout"
+	var chest = pivot(scout,Vector3.UP*0.29)
+	map.box(chest,Vector3.UP*0.10,Vector3(0.33,0.34,0.24),"924938")
+	var head = pivot(chest,Vector3.ZERO)
+	map.build_goblin_head(head,"788349")
+	for side in [-1,1]:
+		map.box(head,Vector3(side*0.079,0.40,0.133),Vector3(0.046,0.034,0.014),"282a22")
+		map.cone(head,Vector3(side*0.17,0.40,0),0.063,0,0.15,3,"788349").rotation.z = -side*1.1
+	var peek = scout.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	peek.tween_property(scout,"position:x",start.x+goblin_side*0.65,0.75)
+	peek.tween_property(head,"rotation:y",0.65,0.46)
+	peek.tween_interval(0.55)
+	peek.tween_property(head,"rotation:y",-0.48,0.58)
+	peek.tween_interval(0.36)
+	peek.tween_property(scout,"position:x",start.x,0.38)
+	peek.tween_callback(scout.queue_free)
+	goblin_side *= -1
 
 func send_mole():
 	last_burrow = (last_burrow + random.randi_range(1,BURROWS.size()-1)) % BURROWS.size() if last_burrow >= 0 else random.randi_range(0,BURROWS.size()-1)

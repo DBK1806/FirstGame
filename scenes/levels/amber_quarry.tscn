@@ -2,5 +2,5 @@
 
 [ext_resource type="PackedScene" path="res://scenes/levels/main.tscn" id="1"]
 
-[node name="Янтарный карьер" instance=ExtResource("1")]
+[node name="Шахты" instance=ExtResource("1")]
 quarry = true

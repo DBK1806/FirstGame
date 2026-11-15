@@ -7,6 +7,7 @@ const SettingsPanel = preload("res://scripts/ui/settings_panel.gd")
 var navigation = VBoxContainer.new()
 var settings = SettingsPanel.new()
 var levels = VBoxContainer.new()
+var level_buttons: Array[Button] = []
 var play_button: Button
 var settings_button: Button
 var starting = false
@@ -23,6 +24,7 @@ func _ready():
 	var panel = PanelContainer.new()
 	root.add_child(panel)
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.offset_left = 68
 	panel.offset_right = 451
 	panel.offset_top = -194
@@ -50,9 +52,21 @@ func _ready():
 		page.add_theme_constant_override("separation",10)
 	play_button = menu_button(navigation,"Начать игру",show_levels,true)
 	var completed = Campaign.completed()
-	for i in mini(completed+1,Campaign.SCENES.size()):
-		var caption_text = "%s · %s" % [["I","II","III","IV","V"][i],Campaign.NAMES[i]]
-		menu_button(levels,caption_text+("  ✓" if i < completed else ""),begin.bind(i),i == completed)
+	var chapters = HBoxContainer.new()
+	chapters.add_theme_constant_override("separation",10)
+	levels.add_child(chapters)
+	for chapter in 2:
+		var column = VBoxContainer.new()
+		column.add_theme_constant_override("separation",6)
+		chapters.add_child(column)
+		for row in 5:
+			var i = chapter*5+row
+			var button = menu_button(column,Campaign.level_title(i+1)+("  ✓" if i < completed else ""),begin.bind(i))
+			style_level_button(button,chapter==1,i==completed)
+			button.disabled = i > completed
+			if button.disabled:
+				button.tooltip_text = "Пройдите уровень «%s»" % Campaign.NAMES[i-1]
+			level_buttons.append(button)
 	menu_button(levels,"Назад",show_home)
 	settings_button = menu_button(navigation,"Настройки",show_settings)
 	menu_button(navigation,"Выход",get_tree().quit)
@@ -103,6 +117,30 @@ func menu_button(parent,caption,callback,primary=false) -> Button:
 	button.pressed.connect(callback)
 	return button
 
+func style_level_button(button: Button,night: bool,current: bool):
+	var base = Color("424054" if night else "394e3b")
+	var trim = Color("a39ab7" if night else "a8a77a")
+	button.custom_minimum_size = Vector2(242,38)
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.add_theme_font_size_override("font_size",17)
+	for state in ["normal","hover","pressed","disabled"]:
+		var stone = base
+		var edge = trim
+		match state:
+			"hover": stone = base.lightened(0.14)
+			"pressed": stone = base.darkened(0.16)
+			"disabled":
+				stone = base.darkened(0.27)
+				edge = trim.darkened(0.43)
+		var frame = panel_color(stone.to_html(),("e1bc75" if current else edge.to_html()))
+		frame.border_width_left = 4
+		frame.content_margin_top = 4
+		frame.content_margin_bottom = 4
+		frame.content_margin_left = 12
+		frame.content_margin_right = 9
+		button.add_theme_stylebox_override(state,frame)
+	button.add_theme_color_override("font_disabled_color",Color("aaa4b6" if night else "a6afa1"))
+
 func show_settings():
 	navigation.hide()
 	settings.show()
@@ -117,15 +155,16 @@ func show_home():
 func show_levels():
 	navigation.hide()
 	levels.show()
-	levels.get_child(0).grab_focus()
+	level_buttons[mini(Campaign.completed(),level_buttons.size()-1)].grab_focus()
 
 func begin(index: int):
-	if starting:
+	if starting or index < 0 or index >= Campaign.SCENES.size() or index > Campaign.completed():
 		return
 	starting = true
 	create_tween().tween_property($MenuMusic, "volume_db", -60.0, 0.38)
-	for button in levels.get_children():
+	for button in level_buttons:
 		button.disabled = true
+	levels.get_child(-1).disabled = true
 	var curtain = TRANSITION.new()
 	get_tree().root.add_child(curtain)
 	curtain.start(load(Campaign.SCENES[index]))

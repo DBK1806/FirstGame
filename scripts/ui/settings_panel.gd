@@ -8,14 +8,22 @@ var picker = OptionButton.new()
 var preview: AudioStreamPlayer
 
 static func saved_size() -> Vector2i:
-	var saved = DisplaySettings.config.get_value("display","size",Vector2i(1280,800))
-	if saved in SIZES:
-		return saved
-	return Vector2i(1280,800)
+	return DisplaySettings.saved_size()
 
 func _ready():
+	var mode_caption = Label.new()
+	mode_caption.text = "Режим экрана"
+	add_child(mode_caption)
+	var mode_picker = OptionButton.new()
+	mode_picker.add_item("Оконный")
+	mode_picker.add_item("Полноэкранный")
+	mode_picker.select(1 if DisplaySettings.is_fullscreen() else 0)
+	mode_picker.custom_minimum_size.y = 40
+	add_child(mode_picker)
+	mode_picker.item_selected.connect(func(index): DisplaySettings.set_fullscreen(index == 1))
 	var caption = Label.new()
-	caption.text = "Разрешение экрана"
+	caption.text = "Размер окна (полный экран — размер монитора)"
+	caption.add_theme_font_size_override("font_size",14)
 	add_child(caption)
 	add_child(picker)
 	picker.custom_minimum_size.y = 48
@@ -32,6 +40,30 @@ func _ready():
 	add_display_slider("Гамма","gamma")
 	add_volume_slider("Музыка", &"Music")
 	add_volume_slider("Звуки игры", &"Effects")
+	var general = VBoxContainer.new()
+	general.name = "Общие"
+	general.add_theme_constant_override("separation",10)
+	for child in get_children():
+		remove_child(child)
+		general.add_child(child)
+	var tabs = TabContainer.new()
+	add_child(tabs)
+	tabs.add_child(general)
+	var controls = VBoxContainer.new()
+	controls.name = "Управление"
+	controls.add_theme_constant_override("separation",14)
+	tabs.add_child(controls)
+	for text in ["ЛКМ — построить выбранную башню", "ПКМ по башне — продать", "Колесо мыши — масштаб карты", "Зажать колесо и двигать мышь — перемещение карты", "Esc — пауза / назад"]:
+		var help = Label.new()
+		help.text = text
+		help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		help.custom_minimum_size.x = 280
+		controls.add_child(help)
+
+func focus_settings():
+	var tabs = picker.get_parent().get_parent() as TabContainer
+	tabs.current_tab = 0
+	picker.grab_focus()
 
 func add_display_slider(caption: String,key: String):
 	var row = HBoxContainer.new()
@@ -78,17 +110,5 @@ func add_volume_slider(caption: String, bus: StringName):
 			preview.play()
 	)
 
-static func apply_size(window: Window,resolution: Vector2i):
-	# Keep the render target at the selected resolution even in an editor-owned window.
-	window.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
-	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-	window.content_scale_size = resolution
-	if window.mode != Window.MODE_WINDOWED:
-		window.mode = Window.MODE_WINDOWED
-	window.size = resolution
-
 func select_size(index):
-	var resolution = SIZES[index]
-	apply_size(get_window(),resolution)
-	DisplaySettings.save_size(resolution)
-
+	DisplaySettings.select_resolution(SIZES[index])

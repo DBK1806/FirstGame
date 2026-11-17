@@ -13,7 +13,6 @@ var settings_button: Button
 var starting = false
 
 func _ready():
-	SettingsPanel.apply_size(get_window(),SettingsPanel.saved_size())
 	settings.preview = $EffectsPreview
 	build_landscape()
 	var layer = CanvasLayer.new()
@@ -144,7 +143,7 @@ func style_level_button(button: Button,night: bool,current: bool):
 func show_settings():
 	navigation.hide()
 	settings.show()
-	settings.picker.grab_focus()
+	settings.focus_settings()
 
 func show_home():
 	levels.hide()

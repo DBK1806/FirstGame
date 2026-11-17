@@ -14,18 +14,18 @@ const UNDEAD_REWARDS = {"skeleton":3,"zombie":7,"gargoyle":30,"death":30}
 const Reaper = preload("res://scripts/gameplay/reaper.gd")
 const WAVE_REWARD = 8
 const PASS_HEALTH = [4, 5, 7, 11, 17, 20]
-const VALLEY_HEALTH = [6, 8, 12, 17, 23, 30, 38, 48]
+const VALLEY_HEALTH = [6, 8, 11, 15, 20, 26, 33, 41]
 const THREE_FIELDS_HEALTH = [7, 8, 10, 14, 20, 24, 28, 36, 44, 54]
 const COIN_ICON = preload("res://assets/icons/coin.svg")
-const MORTAR_COST = 50
+const MORTAR_COST = 60
 const MORTAR_RANGE = 4
 const ARROW_DAMAGE = 1
 const SHELL_DAMAGE = 5
 const ARCHER_INTERVAL = 0.5
-const VETERAN_DAMAGE = 1.5
+const VETERAN_DAMAGE = 2.5
 const VETERAN_INTERVAL = 0.5
 const ARCHER_UPGRADE_COST = 50
-const MORTAR_INTERVAL = 2.5
+const MORTAR_INTERVAL = 3.0
 const BLAST_RADIUS = 1.5
 const FLIGHT_TIME = 0.90
 const GRAVITY = Vector3.DOWN * 19.0
@@ -37,10 +37,10 @@ const TOWER_COSTS = [COST,MORTAR_COST,40,65]
 const TOWER_RANGES = [RANGE,MORTAR_RANGE,3,5]
 const TOWER_ICONS = [preload("res://assets/icons/archer_icon.svg"),preload("res://assets/icons/mortar_icon.svg"),preload("res://assets/icons/windmill_icon.svg"),preload("res://assets/icons/ballista_icon.svg")]
 const MILL_SLOW_PERCENT = 25
-const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,60,45,75]
-const ELITE_RANGES = [RANGE,4.5,3.5,6]
-const HEAVY_SHELL_DAMAGE = 8
-const HEAVY_BLAST_RADIUS = 2
+const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,85,45,75]
+const ELITE_RANGES = [4.5,4.5,3.5,6]
+const HEAVY_SHELL_DAMAGE = 7
+const HEAVY_BLAST_RADIUS = 1.65
 const STRONG_WIND_PERCENT = 40
 const CAMERA_OFFSET = Vector3(10,22,29)
 @export var mill_valley = false
@@ -91,6 +91,8 @@ var upgrade_title = Label.new()
 var upgrade_action = Button.new()
 var upgrade_stats = Label.new()
 var upgrade_kind = Tower.ARCHER
+var upgrade_hover_tile: Control
+var world_info_visible = false
 var upgraded = [false,false,false,false]
 var tower_details = RichTextLabel.new()
 var hovered = Vector2i(999,999)
@@ -101,8 +103,6 @@ func ground(cell):
 	return Vector3(cell.x,0,cell.y)
 
 func _ready():
-	const SettingsPanel = preload("res://scripts/ui/settings_panel.gd")
-	SettingsPanel.apply_size(get_window(),SettingsPanel.saved_size())
 	rng.seed = 1823 if mill_valley else 471
 	if not cemetery_stage:
 		light_world(quarry,dusk_ridge)
@@ -132,7 +132,7 @@ func _ready():
 			Vector2i(-8,-5),Vector2i(-3,-5),Vector2i(-3,-1),Vector2i(1,-1),
 			Vector2i(1,5),Vector2i(4,5),Vector2i(4,-5),Vector2i(9,-5)]
 	if cemetery_stage:
-		coins = 125
+		coins = 140 if cemetery_stage in [1,5] else 125
 		$GoblinFall.stream = preload("res://assets/audio/sfx/bone_scatter.wav")
 		$BruteFall.stream = preload("res://assets/audio/sfx/zombie_groan.wav")
 		corners = Cemetery.ROUTES[cemetery_stage-1]
@@ -848,25 +848,25 @@ func build_tower_row(bottom, upgrades: bool):
 		tiles.add_child(tile)
 		tile.pressed.connect($MenuClick.play.bind(0.0))
 		if upgrades:
-			tile.pressed.connect(func():
+			var show_upgrade = func():
+				upgrade_hover_tile = tile
 				info_panel.hide()
-				if panel.visible and upgrade_title.text == TOWER_NAMES[kind]:
-					panel.hide()
-					return
 				upgrade_title.text = TOWER_NAMES[kind]
 				upgrade_kind = kind
 				refresh_upgrade()
 				panel.show()
 				panel.reset_size()
-				panel.position = Vector2(stack.size.x-panel.size.x,-panel.size.y-4)
-			)
+				panel.position = Vector2(stack.size.x-panel.size.x,tiles.position.y-panel.size.y)
+			tile.mouse_entered.connect(show_upgrade)
+			tile.pressed.connect(show_upgrade)
 		else:
-			tile.pressed.connect(func():
+			tile.mouse_entered.connect(func():
+				world_info_visible = false
 				upgrade_panel.hide()
-				if info_panel.visible and selected_tower == kind:
-					info_panel.hide()
-				else:
-					show_tower_details(kind)
+				show_tower_details(kind)
+			)
+			tile.mouse_exited.connect(info_panel.hide)
+			tile.pressed.connect(func():
 				selected_tower = kind
 				if not finished:
 					default_hint()
@@ -889,6 +889,7 @@ func build_tower_row(bottom, upgrades: bool):
 		upgrade_action.pressed.connect($MenuClick.play.bind(0.0))
 		upgrade_action.pressed.connect(buy_upgrade)
 		return
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tower_details.bbcode_enabled = true
 	tower_details.custom_minimum_size = Vector2(320,180)
 	tower_details.fit_content = true
@@ -897,10 +898,18 @@ func build_tower_row(bottom, upgrades: bool):
 	tower_details.add_theme_font_size_override("bold_font_size",18)
 	panel.add_child(tower_details)
 
+func _hide_upgrade_outside(tile):
+	var point = upgrade_panel.get_global_mouse_position()
+	if upgrade_panel.get_global_rect().has_point(point):
+		return
+	if is_instance_valid(tile) and tile.get_global_rect().has_point(point):
+		return
+	upgrade_panel.hide()
+
 func stat_text(value: float) -> String:
 	if is_equal_approx(value,roundf(value)):
 		return str(roundi(value))
-	return String.num(value,1).replace(".",",")
+	return String.num(value,2).replace(".",",")
 
 func archer_damage() -> float:
 	return VETERAN_DAMAGE if upgraded[Tower.ARCHER] else ARROW_DAMAGE
@@ -917,13 +926,13 @@ func tower_available(kind: int) -> bool:
 func refresh_upgrade():
 	match upgrade_kind:
 		Tower.BALLISTA:
-			upgrade_stats.text = "Урон по каждой цели  %d   ·   Дальность  %d кл." % [Ballista.DAMAGE[1],ELITE_RANGES[Tower.BALLISTA]]
+			upgrade_stats.text = "Урон по каждой цели  %d\nДальность  %d кл." % [Ballista.DAMAGE[1],ELITE_RANGES[Tower.BALLISTA]]
 		Tower.ARCHER:
-			upgrade_stats.text = "Урон  %s   ·   Выстрел каждые %s с" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL)]
+			upgrade_stats.text = "Урон  %s\nВыстрел каждые %s с" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL)]
 		Tower.MORTAR:
-			upgrade_stats.text = "Урон  %d   ·   Радиус взрыва  %d кл.\nДальность  %s кл." % [HEAVY_SHELL_DAMAGE,HEAVY_BLAST_RADIUS,stat_text(ELITE_RANGES[Tower.MORTAR])]
+			upgrade_stats.text = "Урон  %d\nРадиус взрыва  %s кл.\nДальность  %s кл." % [HEAVY_SHELL_DAMAGE,stat_text(HEAVY_BLAST_RADIUS),stat_text(ELITE_RANGES[Tower.MORTAR])]
 		Tower.MILL:
-			upgrade_stats.text = "Замедление  %d%%   ·   Радиус  %s кл." % [STRONG_WIND_PERCENT,stat_text(ELITE_RANGES[Tower.MILL])]
+			upgrade_stats.text = "Замедление  %d%%\nРадиус  %s кл." % [STRONG_WIND_PERCENT,stat_text(ELITE_RANGES[Tower.MILL])]
 	var price = UPGRADE_COSTS[upgrade_kind]
 	upgrade_action.disabled = finished or upgraded[upgrade_kind] or coins < price
 	upgrade_action.text = "Уровень 2 получен" if upgraded[upgrade_kind] else "Улучшить за %d монет" % price
@@ -1023,8 +1032,7 @@ func draw_health_bars():
 		health_bars.draw_rect(Rect2(pos, Vector2(maxf(1, roundf(width * ratio)), height)), fill)
 
 func default_hint():
-	var attack = TOWER_NAMES[selected_tower]
-	hint.text = "%s   ·   ЛКМ — строить   ·   ПКМ — продать   ·   Esc — пауза" % attack
+	hint.text = TOWER_NAMES[selected_tower]
 
 func refresh():
 	refresh_upgrade()
@@ -1154,6 +1162,7 @@ func sell_tower(cell, point):
 	hovered = Vector2i(999,999)
 	var refund = int(selected.price * 0.5)
 	coins += refund
+	show_reward(selected.node.position + Vector3.UP*1.2,refund)
 	hint.text = "Башня продана за %d монет" % refund
 	message_time = 2
 	refresh()
@@ -1550,6 +1559,8 @@ func _process(delta):
 		message_time -= delta
 		if message_time <= 0:
 			default_hint()
+	if upgrade_panel.visible:
+		_hide_upgrade_outside(upgrade_hover_tile)
 	update_range_preview(get_viewport().get_mouse_position(), get_viewport().gui_get_hovered_control() != null)
 	if not fighting:
 		return
@@ -1560,7 +1571,12 @@ func update_range_preview(point: Vector2, over_ui: bool):
 	var cell = empty if over_ui else mouse_cell(point)
 	var tower = null if over_ui or pads.has(cell) else tower_at(cell, point)
 	if tower != null:
+		show_tower_details(tower.kind)
+		world_info_visible = true
 		cell = empty
+	elif world_info_visible:
+		info_panel.hide()
+		world_info_visible = false
 	if cell != hovered:
 		if pads.has(hovered):
 			pads[hovered].material_override = mat(pad_color,"grass")

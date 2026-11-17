@@ -68,7 +68,7 @@ func show_settings(open: bool):
 	settings.visible = open
 	navigation.visible = not open
 	if open:
-		settings.picker.grab_focus()
+		settings.focus_settings()
 	else:
 		settings_button.grab_focus()
 

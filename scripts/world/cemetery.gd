@@ -353,18 +353,25 @@ func build_night_alley(occupied,map):
 	box(self,Vector3(watch.JUNCTION,0.016,2.225),Vector3(0.78,0.032,9.95),"8b837e","earth")
 	for z in [-2.1,0,2.1]:
 		for x in [-12.0,-9.0]:
-			var yew = group(Vector3(x,0,z))
-			cone(yew,Vector3.UP*0.23,0.095,0.073,0.46,7,"625044","wood")
-			oval(yew,Vector3.UP*0.78,Vector3(0.67,1.15,0.69),"42554a","needles")
-			oval(yew,Vector3.UP*1.26,Vector3(0.45,0.67,0.47),"4b6051","needles")
+			alley_yew(Vector3(x,0,z))
+	reserve(Rect2i(7,-4,4,5),occupied)
+	for z in [-3.5,-1.5]:
+		for x in [7.0,10.0]:
+			alley_yew(Vector3(x,0,z))
+	alley_bench(Vector3(10,0,0.35),-PI/2)
 	# A strip of gravel belongs to the keeper, clear of the road and the tower plots.
-	box(self,Vector3(-6.2,0.012,7.2),Vector3(22.0,0.024,0.64),"807877","earth")
+	box(self,Vector3((-17.2+watch.EAST)*0.5,0.018,watch.SOUTH),Vector3(watch.EAST+17.2+0.70,0.036,0.70),"807877","earth")
+	for i in range(1,watch.EAST_PATH.size()-1):
+		var a: Vector2 = watch.EAST_PATH[i]
+		var b: Vector2 = watch.EAST_PATH[i+1]
+		var center = (a+b)*0.5
+		var gravel = box(self,Vector3(center.x,0.018,center.y),Vector3(0.70,0.036,a.distance_to(b)+0.70),"807877","earth")
+		gravel.rotation.y = atan2(b.x-a.x,b.y-a.y)
+		for step in range(ceili(a.distance_to(b)*4)+1):
+			var point = a.lerp(b,float(step)/maxf(1,ceili(a.distance_to(b)*4)))
+			reserve(Rect2i(Vector2i(floori(point.x-0.6),floori(point.y-0.6)),Vector2i(2,2)),occupied)
 	for x in [-12.0,-4.0,3.0]:
-		var bench = group(Vector3(x,0,6.45))
-		for side in [-1,1]:
-			box(bench,Vector3(side*0.42,0.16,0),Vector3(0.10,0.32,0.30),"56505a")
-		box(bench,Vector3.UP*0.31,Vector3(1.15,0.085,0.34),"8c7564","wood")
-		box(bench,Vector3(0,0.49,-0.14),Vector3(1.15,0.25,0.07),"816e61","wood")
+		alley_bench(Vector3(x,0,6.45))
 	reserve(Rect2i(15,-8,7,6),occupied)
 	var plot = group(Vector3(18,0,-5.3))
 	fence(plot,Vector3(-2.4,0,-1.65),Vector3(2.4,0,-1.65))
@@ -381,6 +388,20 @@ func build_night_alley(occupied,map):
 	var keeper = watch.new()
 	add_child(keeper)
 	keeper.setup(self,map)
+
+func alley_yew(at: Vector3):
+	var yew = group(at)
+	cone(yew,Vector3.UP*0.23,0.095,0.073,0.46,7,"625044","wood")
+	oval(yew,Vector3.UP*0.78,Vector3(0.67,1.15,0.69),"42554a","needles")
+	oval(yew,Vector3.UP*1.26,Vector3(0.45,0.67,0.47),"4b6051","needles")
+
+func alley_bench(at: Vector3,heading: float = 0.0):
+	var bench = group(at)
+	bench.rotation.y = heading
+	for side in [-1,1]:
+		box(bench,Vector3(side*0.42,0.16,0),Vector3(0.10,0.32,0.30),"56505a")
+	box(bench,Vector3.UP*0.31,Vector3(1.15,0.085,0.34),"8c7564","wood")
+	box(bench,Vector3(0,0.49,-0.14),Vector3(1.15,0.25,0.07),"816e61","wood")
 
 func memorial(map,origin: Vector3 = Vector3(10.8,0,-3.4)):
 	var yard = group(origin)

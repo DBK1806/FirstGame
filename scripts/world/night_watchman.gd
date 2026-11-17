@@ -6,8 +6,9 @@ const JUNCTION = -10.5
 const SOUTH = 7.2
 const NORTH = -2.65
 const SHOT_INTERVAL = 8.0
-const REACH = 4.7
+const REACH = 5.3
 const DAMAGE = 2
+const EAST_PATH = [Vector2(JUNCTION,SOUTH),Vector2(4.45,7.2),Vector2(4.45,1.65),Vector2(8.5,1.65),Vector2(8.5,-3.6)]
 var map
 var legs: Array[Node3D] = []
 var shoulders: Node3D
@@ -107,9 +108,7 @@ func _process(delta):
 		rethink = 0.75
 		destination = wave_lookout()
 	var here = Vector2(position.x,position.z)
-	var waypoint = destination
-	if not is_equal_approx(here.x,destination.x) and not is_equal_approx(here.y,destination.y):
-		waypoint = Vector2(JUNCTION,SOUTH)
+	var waypoint = patrol_waypoint(here,destination)
 	var next = here.move_toward(waypoint,delta*0.95)
 	if next != here:
 		var step = next-here
@@ -132,7 +131,12 @@ func wave_lookout() -> Vector2:
 	var wave = Vector2(cell)
 	var avenue = Vector2(JUNCTION,clampf(wave.y,NORTH,SOUTH))
 	var path = Vector2(clampf(wave.x,WEST,EAST),SOUTH)
-	return avenue if avenue.distance_squared_to(wave)<path.distance_squared_to(wave) else path
+	var best = avenue if avenue.distance_squared_to(wave)<path.distance_squared_to(wave) else path
+	for i in EAST_PATH.size()-1:
+		var candidate = Geometry2D.get_closest_point_to_segment(wave,EAST_PATH[i],EAST_PATH[i+1])
+		if candidate.distance_squared_to(wave) < best.distance_squared_to(wave):
+			best = candidate
+	return best
 
 func show_hit(mob):
 	var point: Vector3 = mob.body.global_position+Vector3.UP*mob.body.scale.y*0.46
@@ -153,3 +157,39 @@ func show_hit(mob):
 
 func rotate_towards_heading(yaw: float,delta: float):
 	rotation.y = rotate_toward(rotation.y,yaw,3.4*delta)
+
+func east_distance(point: Vector2) -> float:
+	var best_distance = INF
+	var result = 0.0
+	var walked = 0.0
+	for i in EAST_PATH.size()-1:
+		var closest = Geometry2D.get_closest_point_to_segment(point,EAST_PATH[i],EAST_PATH[i+1])
+		if point.distance_squared_to(closest) < best_distance:
+			best_distance = point.distance_squared_to(closest)
+			result = walked + EAST_PATH[i].distance_to(closest)
+		walked += EAST_PATH[i].distance_to(EAST_PATH[i+1])
+	return result
+
+func patrol_waypoint(here: Vector2, goal: Vector2) -> Vector2:
+	var junction = Vector2(JUNCTION,SOUTH)
+	if here.x > JUNCTION+0.01 or goal.x > JUNCTION+0.01:
+		if here.x <= JUNCTION+0.01 and here.distance_to(junction)>0.01:
+			return junction
+		var from = east_distance(here)
+		var to = east_distance(goal)
+		var walked = 0.0
+		var previous = junction
+		for i in EAST_PATH.size():
+			if i > 0:
+				walked += EAST_PATH[i-1].distance_to(EAST_PATH[i])
+			if to > from and walked > from+0.01 and walked < to:
+				return EAST_PATH[i]
+			if to < from and walked >= from-0.01:
+				return previous if east_distance(previous) > to else (junction if goal.x <= JUNCTION else goal)
+			previous = EAST_PATH[i]
+		if here.x <= JUNCTION and here.distance_to(junction)>0.01:
+			return junction
+		return goal
+	if not is_equal_approx(here.x,goal.x) and not is_equal_approx(here.y,goal.y):
+		return junction
+	return goal

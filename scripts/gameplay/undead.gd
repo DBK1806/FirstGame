@@ -1,11 +1,11 @@
 extends RefCounted
 
 const HEALTH = [
-	[7,9,11,14,17,20,24,28,33,38,44,50],
+	[7,9,11,13,16,19,22,26,30,35,40,46],
 	[8,10,13,16,20,24,28,33,38,44,51,58],
 	[9,12,15,18,22,27,32,38,44,51,58,66],
 	[9,12,16,21,26,32,38,45,53,62,72,84,98,114],
-	[10,13,17,22,28,35,43,51,60,71,83,96,111,128,148]]
+	[10,13,17,21,27,33,40,48,57,67,78,90,104,120,138]]
 const WEAPON_HEALTH = [1.04,1.09,1.0,0.95]
 const FLIGHT_TIME = 0.95
 const FLIGHT_SPEED = 3.1
@@ -97,7 +97,7 @@ static func build_model(map,root,kind: String,weapon: int = -1):
 
 static func add_weapon(map,arm,index):
 	var grip = map.limb_joint(arm,Vector3(0,-0.33,0.07))
-	grip.rotation.x = 0.68
+	grip.rotation.x = 0.95
 	map.box(grip,Vector3.UP*0.19,Vector3(0.041,0.62,0.045),"745740","wood")
 	var steel = "b0b6bd"
 	match index:
@@ -106,7 +106,7 @@ static func add_weapon(map,arm,index):
 			map.cone(grip,Vector3.UP*0.34,0.074,0.017,0.49,4,steel)
 		1:
 			for side in [-1,1]:
-				map.cone(grip,Vector3(side*0.10,0.48,0),0.055,0.008,0.23,4,steel).rotation.z = -side*1.90
+				map.cone(grip,Vector3(0,0.48,side*0.10),0.055,0.008,0.23,4,steel).rotation.x = side*1.90
 		2:
 			map.box(grip,Vector3.UP*0.51,Vector3(0.18,0.17,0.044),steel)
 			map.cone(grip,Vector3.UP*0.625,0.105,0.035,0.08,4,steel)

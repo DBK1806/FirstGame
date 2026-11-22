@@ -1,7 +1,7 @@
 extends RefCounted
 
 const DAMAGE = [6,10]
-const INTERVAL = 1.65
+const INTERVAL = 1.85
 const BOLT_SPEED = 18.0
 
 static func bow(map,swivel,height: float,span: float,steel: bool):

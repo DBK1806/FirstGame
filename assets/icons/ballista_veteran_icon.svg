@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+ <path d="m13 26-6 17 6 2 8-18m14-1 6 17-6 2-8-18" fill="#697984" stroke="#26363f" stroke-width="1.5" stroke-linejoin="round"/>
+ <path d="M11 38h26v6H11z" fill="#637582" stroke="#dab66a" stroke-width="1.5"/>
+ <path d="M18 18h12v20H18z" fill="#46535d" stroke="#26333e" stroke-width="1.5"/>
+ <path d="M19 7h10v31l-5 6-5-6z" fill="#957049" stroke="#e0b96b" stroke-width="1.5"/>
+ <path d="M22 10v28m4-28v28" stroke="#cad8df" stroke-width="1.5"/>
+ <path d="M3 24 6 14 15 9 24 12 33 9 42 14 45 24" fill="none" stroke="#263640" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M3 24 6 14 15 9 24 12 33 9 42 14 45 24" fill="none" stroke="#9cb5c3" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M6 14 15 9 24 12 33 9 42 14" fill="none" stroke="#e3c278" stroke-width="1.3"/>
+ <path d="m3 24 21 10 21-10" fill="none" stroke="#f5e8c7" stroke-width="1.4"/>
+ <path d="M24 33V6" stroke="#e8edf0" stroke-width="3"/>
+ <path d="m24 1-5 9 5-2 5 2z" fill="#e1edf3" stroke="#536e7e" stroke-width="1"/>
+ <path d="m21 28 3 3 3-3v6l-3 3-3-3z" fill="#e6c779"/>
+ <rect x="11" y="10" width="5" height="10" rx="2" fill="#d8ad60" stroke="#5f4d34"/>
+ <rect x="32" y="10" width="5" height="10" rx="2" fill="#d8ad60" stroke="#5f4d34"/>
+ <rect x="33" y="32" width="14" height="15" rx="3" fill="#293f48" stroke="#dfbd76"/>
+ <path d="M37.5 35.5v8m5-8v8" stroke="#ffe2a0" stroke-width="2.3"/>
+</svg>

@@ -10,14 +10,29 @@ const WEAPON_HEALTH = [1.04,1.09,1.0,0.95]
 const FLIGHT_TIME = 0.95
 const FLIGHT_SPEED = 3.1
 
-static func gargoyle_hp(map) -> int:
+static func base_gargoyle_hp(map) -> int:
 	var factor = 4.6 if map.cemetery_stage == 5 else 5.4
 	return roundi(map.health_table[map.wave-1]*factor)
+
+static func gargoyle_hp(map) -> int:
+	if map.cemetery_stage == 2:
+		return 110 if map.wave < 9 else (190 if map.wave < 12 else 280)
+	if map.cemetery_stage == 3:
+		return 190 if map.wave < 9 else (280 if map.wave < 12 else 430)
+	if map.cemetery_stage == 4:
+		return base_gargoyle_hp(map) - 10
+	if map.cemetery_stage == 5 and map.wave in [5,9]:
+		return base_gargoyle_hp(map)
+	return base_gargoyle_hp(map) + (50 if map.cemetery_stage == 1 else 100)
+
+static func reaper_hp(map) -> float:
+	return 2.5*base_gargoyle_hp(map) + 100
 
 static func spawn(map):
 	var chapter: int = map.cemetery_stage-1
 	var kind = "skeleton"
-	var boss_wave = map.wave in [5,9,12] or map.wave == map.wave_count
+	var first_boss_wave = 7 if map.cemetery_stage == 1 else 5
+	var boss_wave = map.wave in [first_boss_wave,9,12] or map.wave == map.wave_count
 	var final_pair = chapter >= 3 and map.wave == map.wave_count and map.remaining == 14
 	if (boss_wave and map.remaining == 1) or final_pair:
 		kind = "gargoyle"
@@ -31,7 +46,7 @@ static func spawn(map):
 		speed = 0.86
 	elif kind == "gargoyle":
 		speed = 1.13
-	var hp = gargoyle_hp(map) if kind == "gargoyle" else maxi(1,roundi(map.health_table[map.wave-1]*factor))
+	var hp = gargoyle_hp(map) if kind == "gargoyle" else maxi(1,roundi(map.health_table[map.wave-1]*factor)) + map.enemy_health_bonus()
 	var root = map.group(map.ground(map.route.front()))
 	var mob = build_model(map,root,kind,weapon)
 	mob.merge({"kind":kind,"brute":kind != "skeleton","ogre":kind == "gargoyle","hp":hp,"max_hp":hp,

@@ -6,11 +6,17 @@ var bat_bounds: Rect2i
 var bat_delay = 4.0
 const UndeadModel = preload("res://scripts/gameplay/undead.gd")
 var graves: Array[Node3D] = []
+var haunted_graves: Array[Node3D] = []
+var haunted_buildings: Array[Node3D] = []
 var perches: Array[Vector3] = []
 var grave_actor: Dictionary
 var grave_delay = 9.0
 var last_grave = -1
 var crow: Node3D
+var crow_head: Node3D
+var crow_tail: Node3D
+var crow_flying = false
+var crow_idle_time = 0.0
 var crow_wings: Array[Node3D] = []
 var perch_index = 0
 var crow_delay = 5.0
@@ -85,6 +91,7 @@ func build(map, chapter: int):
 			angel.rotation.y = -side*0.45
 			statue(angel)
 		build_crow()
+		build_fountain_walk(occupied)
 	elif chapter == 2:
 		reserve(Rect2i(-15,-9,3,4),occupied)
 		reserve(Rect2i(-12,-9,3,2),occupied)
@@ -130,6 +137,14 @@ func build(map, chapter: int):
 				open_grave(plot)
 			else:
 				gravestone(plot)
+				if chapter == 1:
+					var flowers_rng = RandomNumberGenerator.new()
+					flowers_rng.seed = 3109 + (x+20)*97 + (z+20)*241
+					if flowers_rng.randf() < 0.45:
+						grave_flowers(plot,["c4a0b0","d4c8ae","a8b9da"][flowers_rng.randi_range(0,2)])
+						var bunch = plot.get_node("Flowers")
+						bunch.rotation.y = flowers_rng.randf_range(-0.6,0.6)
+						bunch.scale = Vector3.ONE*flowers_rng.randf_range(0.8,1.25)
 	crypt(map.ground(gate),chapter)
 	if chapter == 2:
 		var tree_sites = [Vector3(-14.8,0,-5.68),Vector3(-11.8,0,-8.75),Vector3(-10.15,0,-8.5)]
@@ -149,6 +164,48 @@ func build(map, chapter: int):
 	var sleeper = limb(self,Vector3.ZERO)
 	grave_actor = UndeadModel.build_model(map,sleeper,"skeleton")
 	sleeper.hide()
+	if chapter == 4:
+		var haunting = preload("res://scripts/world/cemetery_haunting.gd").new()
+		add_child(haunting)
+		haunting.build(self)
+
+func build_fountain_walk(occupied: Dictionary):
+	var walk = group(Vector3.ZERO)
+	walk.name = "FountainWalk"
+	var points = [Vector2(0.5,8.25),Vector2(-1.6,8.05),Vector2(-3.4,8.65),Vector2(-6.1,8.65),Vector2(-9,7),Vector2(-13.5,7)]
+	# One continuous strip with shared corner edges avoids gaps and overlapping rectangles.
+	var edges: Array[Vector2] = []
+	for i in points.size():
+		var before: Vector2 = (points[i]-points[maxi(0,i-1)]).normalized() if i > 0 else (points[1]-points[0]).normalized()
+		var after: Vector2 = (points[mini(i+1,points.size()-1)]-points[i]).normalized() if i < points.size()-1 else before
+		var normal = (before.orthogonal()+after.orthogonal()).normalized()
+		var offset = normal * (0.24 / maxf(0.5,normal.dot(after.orthogonal())))
+		edges.append(points[i]+offset)
+		edges.append(points[i]-offset)
+	var surface = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(points.size()-1):
+		for index in [i*2,i*2+2,i*2+1,i*2+1,i*2+2,i*2+3]:
+			var point = edges[index]
+			surface.set_normal(Vector3.UP)
+			surface.set_uv(point)
+			surface.add_vertex(Vector3(point.x,0.025,point.y))
+	var trail = mesh_part(walk,surface.commit(),Vector3.ZERO,"878078","earth")
+	trail.material_override = trail.material_override.duplicate()
+	trail.material_override.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var pebble_rng = RandomNumberGenerator.new()
+	pebble_rng.seed = 7119
+	for i in range(points.size()-1):
+		var a: Vector2 = points[i]
+		var b: Vector2 = points[i+1]
+		var steps = ceili(a.distance_to(b)/0.22)
+		for step in range(steps+1):
+			var point = a.lerp(b,float(step)/steps)
+			occupied[Vector2i(roundi(point.x),roundi(point.y))] = true
+			if step%2 == 0:
+				var offset = (b-a).normalized().orthogonal()*pebble_rng.randf_range(-0.20,0.20)
+				var stone = box(walk,Vector3(point.x+offset.x,0.033,point.y+offset.y),Vector3(0.08,0.026,0.06),"ada69a")
+				stone.rotation.y = pebble_rng.randf()*TAU
 
 func lamp(at: Vector3, torch: bool):
 	var post = group(at)
@@ -184,6 +241,7 @@ func lamp(at: Vector3, torch: bool):
 		flicker.parallel().tween_property(light,"light_energy",2.4,beat*1.4)
 
 func gravestone(plot):
+	haunted_graves.append(plot)
 	box(plot,Vector3.UP*0.07,Vector3(0.68,0.14,0.80),"686675","stone")
 	var stone = limb(plot,Vector3(0,0.13,-0.17))
 	stone.rotation.z = rng.randf_range(-0.13,0.13)
@@ -248,6 +306,7 @@ func forest(area: Rect2i,occupied):
 			dead_tree(trunk,true)
 
 func open_grave(plot):
+	haunted_graves.append(plot)
 	graves.append(plot)
 	box(plot,Vector3.UP*0.008,Vector3(0.71,0.016,0.93),"292530")
 	for x in [-0.39,0.39]:
@@ -441,6 +500,7 @@ func grave_flowers(grave: Node3D,tone: String):
 		oval(bunch,stem+Vector3.UP*0.016,Vector3(0.036,0.03,0.036),"e3be74")
 
 func build_chapel(chapel: Node3D):
+	haunted_buildings.append(chapel)
 	chapel.name = "Chapel"
 	chapel.look_at(Vector3(14.5,0,9.5),Vector3.UP,true)
 	box(chapel,Vector3.UP*0.10,Vector3(1.55,0.20,1.55),"55555f","stone")
@@ -543,12 +603,15 @@ func build_crow():
 	crow = group(perches[0])
 	crow.name = "Raven"
 	oval(crow,Vector3.UP*0.13,Vector3(0.21,0.23,0.42),"302e39")
-	oval(crow,Vector3(0,0.255,0.145),Vector3(0.19,0.20,0.20),"272631")
-	cone(crow,Vector3(0,0.24,0.27),0.064,0.006,0.15,5,"4c4651").rotation.x = PI/2
-	oval(crow,Vector3(0,0.13,-0.22),Vector3(0.15,0.06,0.27),"262632")
+	crow_head = limb(crow,Vector3(0,0.22,0.12))
+	crow_head.name = "Head"
+	oval(crow_head,Vector3(0,0.035,0.025),Vector3(0.19,0.20,0.20),"272631")
+	cone(crow_head,Vector3(0,0.02,0.15),0.064,0.006,0.15,5,"4c4651").rotation.x = PI/2
+	crow_tail = limb(crow,Vector3(0,0.13,-0.15))
+	oval(crow_tail,Vector3(0,0,-0.07),Vector3(0.15,0.06,0.27),"262632")
 	for side in [-1,1]:
 		box(crow,Vector3(side*0.056,0.028,0.015),Vector3(0.027,0.055,0.09),"564d50")
-		oval(crow,Vector3(side*0.081,0.27,0.183),Vector3.ONE*0.033,"c6ac86")
+		oval(crow_head,Vector3(side*0.081,0.05,0.063),Vector3.ONE*0.033,"c6ac86")
 		var wing = limb(crow,Vector3(side*0.08,0.19,0))
 		crow_wings.append(wing)
 		oval(wing,Vector3(side*0.17,0,-0.04),Vector3(0.39,0.061,0.18),"373644")
@@ -618,10 +681,26 @@ func _process(delta):
 			grave_visit()
 			grave_delay = rng.randf_range(24,43)
 	if is_instance_valid(crow):
+		if crow_flying:
+			return
+		animate_perched_crow(delta)
 		crow_delay -= delta
 		if crow_delay <= 0:
 			fly_crow()
 			crow_delay = rng.randf_range(10,20)
+
+func animate_perched_crow(delta: float):
+	crow_idle_time += delta
+	var t = crow_idle_time
+	crow_head.rotation.y = sin(t*1.3)*0.48
+	crow_head.rotation.x = maxf(0,sin(t*2.1))*0.24
+	crow_head.rotation.z = sin(t*0.85)*0.12
+	crow_tail.rotation.x = sin(t*2.4)*0.10
+	var ruffle = pow(maxf(0,sin(t*1.1)),8)
+	for i in 2:
+		var side = 2*i-1
+		crow_wings[i].rotation.y = side*(1.25-ruffle*0.18)
+		crow_wings[i].rotation.z = side*(0.025*sin(t*2)+ruffle*0.16*sin(t*18))
 
 func turn_sentinel(weight: float):
 	var camera = get_viewport().get_camera_3d()
@@ -659,6 +738,9 @@ func grave_visit():
 	visit.tween_callback(actor.hide)
 
 func fly_crow():
+	crow_flying = true
+	crow_head.rotation = Vector3.ZERO
+	crow_tail.rotation = Vector3.ZERO
 	var start = crow.position
 	perch_index = (perch_index+rng.randi_range(1,perches.size()-1))%perches.size()
 	var target = to_local(perches[perch_index])
@@ -673,9 +755,11 @@ func fly_crow():
 			crow_wings[i].rotation.y = side*1.25*(1-spread)
 			crow_wings[i].rotation.z = side*sin(t*duration*TAU*3.7)*0.63*spread
 	,0.0,1.0,duration)
+	flight.tween_callback(func(): crow_flying = false)
 
 func crypt(at: Vector3,chapter: int):
 	var hall = group(at)
+	haunted_buildings.append(hall)
 	box(hall,Vector3.UP*0.11,Vector3(2.6,0.22,2.36),"777485","stone")
 	box(hall,Vector3.UP*0.86,Vector3(2.22,1.48,1.96),"95909a","stone")
 	box(hall,Vector3(-1.12,0.55,0),Vector3(0.05,1.06,0.74),"302b37")

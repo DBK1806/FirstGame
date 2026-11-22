@@ -17,10 +17,15 @@ const PASS_HEALTH = [4, 5, 7, 11, 17, 20]
 const VALLEY_HEALTH = [6, 8, 11, 15, 20, 26, 33, 41]
 const THREE_FIELDS_HEALTH = [7, 8, 10, 14, 20, 24, 28, 36, 44, 54]
 const COIN_ICON = preload("res://assets/icons/coin.svg")
+const ARCHER_VETERAN_ICON = preload("res://assets/icons/archer_veteran_icon.svg")
+const MORTAR_VETERAN_ICON = preload("res://assets/icons/mortar_veteran_icon.svg")
+const MILL_VETERAN_ICON = preload("res://assets/icons/windmill_veteran_icon.svg")
+const BALLISTA_VETERAN_ICON = preload("res://assets/icons/ballista_veteran_icon.svg")
+const REAPER_DELAY = 10.0
 const MORTAR_COST = 60
 const MORTAR_RANGE = 4
 const ARROW_DAMAGE = 1
-const SHELL_DAMAGE = 5
+const SHELL_DAMAGE = 6
 const ARCHER_INTERVAL = 0.5
 const VETERAN_DAMAGE = 2.5
 const VETERAN_INTERVAL = 0.5
@@ -34,12 +39,12 @@ enum Tower { ARCHER, MORTAR, MILL, BALLISTA }
 const TOWER_NAMES = ["Лучники","Мортира","Ветряная мельница","Баллиста"]
 const TOWER_ROLES = ["Стрела в одну цель","Ядро по площади","Замедление по области","Болт пробивает врагов в ряд"]
 const TOWER_COSTS = [COST,MORTAR_COST,40,65]
-const TOWER_RANGES = [RANGE,MORTAR_RANGE,3,5]
+const TOWER_RANGES = [RANGE,MORTAR_RANGE,3,6.5]
 const TOWER_ICONS = [preload("res://assets/icons/archer_icon.svg"),preload("res://assets/icons/mortar_icon.svg"),preload("res://assets/icons/windmill_icon.svg"),preload("res://assets/icons/ballista_icon.svg")]
 const MILL_SLOW_PERCENT = 25
-const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,85,45,75]
-const ELITE_RANGES = [4.5,4.5,3.5,6]
-const HEAVY_SHELL_DAMAGE = 7
+const UPGRADE_COSTS = [ARCHER_UPGRADE_COST,85,50,85]
+const ELITE_RANGES = [4.5,4.5,3.5,7.5]
+const HEAVY_SHELL_DAMAGE = 8
 const HEAVY_BLAST_RADIUS = 1.65
 const STRONG_WIND_PERCENT = 40
 const CAMERA_OFFSET = Vector3(10,22,29)
@@ -78,6 +83,7 @@ var rewards = Node2D.new()
 var gate_attackers = 0
 var reaper_pending = false
 var boss_warning: Label
+var boss_warning_sound: AudioStreamPlayer
 var gate_boards = []
 var gate_strap: MeshInstance3D
 var shells_in_flight = 0
@@ -91,18 +97,42 @@ var upgrade_title = Label.new()
 var upgrade_action = Button.new()
 var upgrade_stats = Label.new()
 var upgrade_kind = Tower.ARCHER
+var upgrade_preview_level = 2
+var upgrade_choices: Array[Button] = []
+var tower_tiles: Array = []
 var upgrade_hover_tile: Control
-var world_info_visible = false
 var upgraded = [false,false,false,false]
 var tower_details = RichTextLabel.new()
 var hovered = Vector2i(999,999)
 var ring = Node3D.new()
 var message_time = 0.0
 
+# Levels 3/4 start at +2/+3 HP; levels 8/10 retain +5. Add +1 per wave.
+# Level 9 adds +1 per wave; wave 7 adds +5 extra, then +2 per wave.
+# Level 7 starts at +8 HP and adds +2 per wave.
+# Level 5 starts at +3 HP and adds +2 per wave; level 6 starts at +2 and adds +1.
+# Level 4 switches to +13 HP on wave 6, then +2 per wave.
+func enemy_health_bonus() -> int:
+	if level_number == 9:
+		return 11 + (wave-7) * 2 if wave >= 7 else maxi(0,wave-1)
+	if level_number == 8 and wave >= 8:
+		return 22 + (wave-8) * 3
+	if level_number == 7:
+		return 8 + maxi(0,wave-1) * 2
+	if level_number == 6:
+		return 2 + maxi(0,wave-1)
+	if level_number == 5:
+		return 3 + maxi(0,wave-1) * 2
+	if level_number == 4 and wave >= 6:
+		return 13 + (wave - 6) * 2
+	return (2 if level_number == 3 else (3 if level_number == 4 else 5)) + maxi(0, wave - 1) if level_number >= 3 else 0
+
 func ground(cell):
 	return Vector3(cell.x,0,cell.y)
 
 func _ready():
+	if level_number == 5:
+		coins = 80
 	rng.seed = 1823 if mill_valley else 471
 	if not cemetery_stage:
 		light_world(quarry,dusk_ridge)
@@ -293,6 +323,10 @@ func build_dusk_ridge():
 			footprint.size *= 0.9
 			local_offset *= 0.9
 		rock_footprints.append(footprint)
+		if i in [0,1,3,4,5]:
+			build_slope_shrubs(rock,peak.y,i)
+		if i == 6:
+			build_ridge_mine(Vector3(footprint.end.x-0.75,0,footprint.get_center().y))
 		if i == 5:
 			var summit = Vector3.ZERO
 			for vertex in rock.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
@@ -330,6 +364,82 @@ func build_dusk_ridge():
 		Vector3(10.02,0.26,-0.69),Vector3(10.06,0.12,-0.59),Vector3(10.1,0.04,-0.39),
 		Vector3(9.7,0.036,1.4),Vector3(10,0.036,3.1),Vector3(9.35,0.036,5.4),
 		Vector3(9.8,0.036,7.1),Vector3(10.2,0.036,9.5)]),4)
+
+func ridge_branch(parent: Node3D, start: Vector3, end: Vector3, width: float):
+	var branch = box(parent,(start+end)*0.5,Vector3(width,width,start.distance_to(end)),"786044","wood")
+	branch.look_at(parent.to_global(end),Vector3.UP)
+
+func build_slope_shrubs(rock: MeshInstance3D, height: float, variant: int):
+	var foliage_rng = RandomNumberGenerator.new()
+	foliage_rng.seed = 8191 + variant*137
+	var vertices: PackedVector3Array = rock.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	for patch in 2:
+		var target = rock.global_position + Vector3(-0.45 if patch == 0 else 0.5,height*(0.38 if patch == 0 else 0.68),1.6)
+		var nearest = Vector3.ZERO
+		var best = INF
+		for index in range(0,vertices.size(),3):
+			var center = rock.to_global((vertices[index]+vertices[index+1]+vertices[index+2])/3.0)
+			var distance = center.distance_squared_to(target)
+			if distance < best:
+				best = distance
+				nearest = center
+		var shrub = group(nearest+Vector3(0,0.015,0.045))
+		shrub.name = "SlopeShrub%d_%d" % [variant,patch]
+		for twig in foliage_rng.randi_range(3,5):
+			var tip = Vector3(foliage_rng.randf_range(-0.30,0.30),foliage_rng.randf_range(0.04,0.22),foliage_rng.randf_range(0.12,0.30))
+			var elbow = tip*0.5+Vector3(0,-0.05,0.05)
+			if twig < 2:
+				ridge_branch(shrub,Vector3(0,-0.04,-0.04),elbow,0.025)
+				ridge_branch(shrub,elbow,tip,0.016)
+			build_ridge_foliage(shrub,tip,foliage_rng)
+
+func build_ridge_foliage(parent: Node3D, at: Vector3, random: RandomNumberGenerator):
+	var points: Array[Vector3] = []
+	var size = Vector3(random.randf_range(0.17,0.28),random.randf_range(0.12,0.23),random.randf_range(0.17,0.26))
+	var phase = random.randf()*TAU
+	for row in 2:
+		for index in 7:
+			var angle = phase + index*TAU/7 + row*0.22
+			var radius = random.randf_range(0.65,1.25)
+			points.append(Vector3(cos(angle)*radius,(-0.45 if row == 0 else 0.45)+random.randf_range(-0.2,0.2),sin(angle)*radius)*size)
+	points.append(Vector3(-0.05,-size.y,0.02))
+	points.append(Vector3(0.03,size.y,0))
+	var surface = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in 7:
+		var next = (index+1)%7
+		for triangle in [[14,next,index],[index,next,index+7],[next,next+7,index+7],[15,index+7,next+7]]:
+			for vertex in triangle:
+				surface.add_vertex(points[vertex])
+	surface.generate_normals()
+	mesh_part(parent,surface.commit(),at,["71854f","8b9457","607849","76884c"][random.randi_range(0,3)],"needles")
+
+func build_ridge_mine(at: Vector3):
+	var mine = build_mine(at+Vector3(0,0,-0.55),1.4)
+	mine.name = "RidgeMine"
+	mine.scale = Vector3.ONE*0.75
+	var opening = mine.get_node("MineOpening")
+	opening.mesh = opening.mesh.duplicate()
+	opening.mesh.size = Vector3(0.79,0.94,0.015)
+	opening.position = Vector3(0,0.48,0.84)
+	var length = minf(3.7,11.0-at.x)
+	for side in [-1,1]:
+		box(mine,Vector3(side*0.20,0.072,(1.4+length)*0.5),Vector3(0.055,0.065,length-1.4),"969b9b")
+	for index in range(6):
+		var z = lerpf(1.55,length, index/5.0)
+		box(mine,Vector3(0,0.028,z),Vector3(0.68,0.055,0.12),"755334","wood")
+	var cart = limb_joint(mine,Vector3(0,0,length-0.55))
+	cart.name = "OreCart"
+	for side in [-1,1]:
+		for z in [-0.23,0.23]:
+			cone(cart,Vector3(side*0.25,0.17,z),0.14,0.14,0.09,10,"41474d").rotation.z = PI/2
+	box(cart,Vector3(0,0.30,0),Vector3(0.58,0.12,0.75),"4e5357")
+	for side in [-1,1]:
+		box(cart,Vector3(side*0.30,0.49,0),Vector3(0.07,0.39,0.82),"946c42","wood")
+		box(cart,Vector3(0,0.49,side*0.38),Vector3(0.60,0.39,0.06),"a77b4c","wood")
+		box(cart,Vector3(side*0.34,0.51,0),Vector3(0.035,0.09,0.84),"555e65")
+	for index in 7:
+		oval(cart,Vector3(0.18*sin(index*2.4),0.59+(index%2)*0.07,0.24*cos(index*2.4)),Vector3(0.26,0.24,0.25),"68717a" if index%2 else "96938a")
 
 func build_stork_nest(at: Vector3):
 	var nest = group(at)
@@ -418,7 +528,7 @@ func quarry_rock(parent: Node3D, origin: Vector3, profile: Array, irregularity: 
 	rock.position = origin
 	return rock
 
-func build_mine(at: Vector3, facing: float):
+func build_mine(at: Vector3, facing: float) -> Node3D:
 	var mine = group(at)
 	mine.rotation.y = facing
 	quarry_rock(mine,Vector3(0,0,-0.24),[Vector2(1.0,0),Vector2(1.02,0.42),
@@ -428,7 +538,7 @@ func build_mine(at: Vector3, facing: float):
 		var shoulder = quarry_rock(mine,Vector3(side*0.74,0,0.25),[Vector2(0.43,0),
 			Vector2(0.39,0.32),Vector2(0.31,0.49),Vector2(0.18,0.69),Vector2(0,0.72)],0.13)
 		shoulder.scale.y = 1.0 if side == 1 else 0.78
-	box(mine,Vector3(0,0.49,0.71),Vector3(0.90,0.98,0.20),"332d29")
+	box(mine,Vector3(0,0.49,0.71),Vector3(0.90,0.98,0.20),"332d29").name = "MineOpening"
 	for side in [-1,1]:
 		box(mine,Vector3(side*0.48,0.52,0.85),Vector3(0.17,1.04,0.20),WOOD,"wood").rotation.z = -side*0.07
 		box(mine,Vector3(side*0.46,0.82,0.97),Vector3(0.20,0.10,0.055),"605d50")
@@ -438,6 +548,7 @@ func build_mine(at: Vector3, facing: float):
 		box(mine,Vector3(0,0.028,z),Vector3(0.60,0.055,0.11),WOOD,"wood")
 	box(mine,Vector3(0.51,0.70,1.01),Vector3(0.14,0.19,0.12),"ffd38a")
 	box(mine,Vector3(0.51,0.81,1.01),Vector3(0.18,0.05,0.16),"504c43")
+	return mine
 
 func build_meadow():
 	var extent = 8 if mill_valley else 4
@@ -747,6 +858,10 @@ func build_ui():
 		boss_warning.add_theme_stylebox_override("normal",panel_color("422b39f0","af815d"))
 		boss_warning.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		boss_warning.hide()
+		boss_warning_sound = AudioStreamPlayer.new()
+		boss_warning_sound.stream = preload("res://assets/audio/sfx/boss_warning.wav")
+		boss_warning_sound.volume_db = -8.0
+		add_child(boss_warning_sound)
 	var bottom = hud_panel(root,true)
 	build_tower_row(bottom,false)
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -829,7 +944,8 @@ func build_tower_row(bottom, upgrades: bool):
 			tile.toggle_mode = true
 			tile.button_group = choices
 			tile.button_pressed = kind == selected_tower
-		tile.icon = TOWER_ICONS[kind]
+		tile.icon = tower_icon(kind)
+		tower_tiles.append({"button":tile,"kind":kind})
 		tile.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		tile.expand_icon = true
 		tile.custom_minimum_size = Vector2(46,46)
@@ -848,8 +964,17 @@ func build_tower_row(bottom, upgrades: bool):
 		tiles.add_child(tile)
 		tile.pressed.connect($MenuClick.play.bind(0.0))
 		if upgrades:
+			tile.disabled = not upgrade_available(kind)
+			tile.tooltip_text = "Выбрать улучшение: " + TOWER_NAMES[kind] if upgrade_available(kind) else ("Улучшение откроется с 5 уровня" if kind == Tower.MORTAR else ("Улучшение откроется с 3 уровня" if kind == Tower.ARCHER else "Улучшения пока заблокированы"))
+			if kind == Tower.MILL and not upgrade_available(kind):
+				tile.tooltip_text = "Улучшение откроется с 6 уровня"
+			if kind == Tower.BALLISTA and not upgrade_available(kind):
+				tile.tooltip_text = "Улучшение откроется с 8 уровня"
 			var show_upgrade = func():
+				if not upgrade_available(kind):
+					return
 				upgrade_hover_tile = tile
+				upgrade_preview_level = 2
 				info_panel.hide()
 				upgrade_title.text = TOWER_NAMES[kind]
 				upgrade_kind = kind
@@ -861,7 +986,6 @@ func build_tower_row(bottom, upgrades: bool):
 			tile.pressed.connect(show_upgrade)
 		else:
 			tile.mouse_entered.connect(func():
-				world_info_visible = false
 				upgrade_panel.hide()
 				show_tower_details(kind)
 			)
@@ -884,6 +1008,27 @@ func build_tower_row(bottom, upgrades: bool):
 		header.add_child(close)
 		close.pressed.connect(panel.hide)
 		close.pressed.connect($MenuClick.play.bind(0.0))
+		var levels = HBoxContainer.new()
+		options.add_child(levels)
+		for target_level in [2,3]:
+			var choice = Button.new()
+			choice.name = "UpgradeLevel%d" % target_level
+			choice.text = "Уровень II" if target_level == 2 else "Уровень III · ?"
+			if target_level == 2:
+				choice.icon = ARCHER_VETERAN_ICON
+				choice.expand_icon = true
+			choice.custom_minimum_size = Vector2(170,64)
+			choice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			choice.toggle_mode = true
+			var preview = func():
+				upgrade_preview_level = target_level
+				refresh_upgrade()
+			choice.mouse_entered.connect(preview)
+			choice.focus_entered.connect(preview)
+			choice.pressed.connect(preview)
+			levels.add_child(choice)
+			upgrade_choices.append(choice)
+		upgrade_stats.custom_minimum_size = Vector2(350,100)
 		options.add_child(upgrade_stats)
 		options.add_child(upgrade_action)
 		upgrade_action.pressed.connect($MenuClick.play.bind(0.0))
@@ -897,14 +1042,6 @@ func build_tower_row(bottom, upgrades: bool):
 	tower_details.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tower_details.add_theme_font_size_override("bold_font_size",18)
 	panel.add_child(tower_details)
-
-func _hide_upgrade_outside(tile):
-	var point = upgrade_panel.get_global_mouse_position()
-	if upgrade_panel.get_global_rect().has_point(point):
-		return
-	if is_instance_valid(tile) and tile.get_global_rect().has_point(point):
-		return
-	upgrade_panel.hide()
 
 func stat_text(value: float) -> String:
 	if is_equal_approx(value,roundf(value)):
@@ -923,26 +1060,60 @@ func tower_range(kind: int) -> float:
 func tower_available(kind: int) -> bool:
 	return (kind != Tower.MILL or level_number >= 3) and (kind != Tower.BALLISTA or level_number >= 7)
 
+func tower_cost(kind: int) -> int:
+	if kind in [Tower.MILL,Tower.BALLISTA] and upgraded[kind]:
+		return UPGRADE_COSTS[kind]
+	if kind == Tower.MORTAR and upgraded[kind]:
+		return 75
+	return 45 if kind == Tower.ARCHER and upgraded[kind] else TOWER_COSTS[kind]
+
 func refresh_upgrade():
-	match upgrade_kind:
-		Tower.BALLISTA:
-			upgrade_stats.text = "Урон по каждой цели  %d\nДальность  %d кл." % [Ballista.DAMAGE[1],ELITE_RANGES[Tower.BALLISTA]]
-		Tower.ARCHER:
-			upgrade_stats.text = "Урон  %s\nВыстрел каждые %s с" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL)]
-		Tower.MORTAR:
-			upgrade_stats.text = "Урон  %d\nРадиус взрыва  %s кл.\nДальность  %s кл." % [HEAVY_SHELL_DAMAGE,stat_text(HEAVY_BLAST_RADIUS),stat_text(ELITE_RANGES[Tower.MORTAR])]
-		Tower.MILL:
-			upgrade_stats.text = "Замедление  %d%%\nРадиус  %s кл." % [STRONG_WIND_PERCENT,stat_text(ELITE_RANGES[Tower.MILL])]
+	if not upgrade_choices.is_empty():
+		upgrade_choices[0].icon = veteran_icon(upgrade_kind)
+	for i in upgrade_choices.size():
+		upgrade_choices[i].set_pressed_no_signal(upgrade_preview_level == i+2)
+	if upgrade_preview_level == 3:
+		upgrade_stats.text = "?\nУлучшение пока неизвестно"
+		upgrade_action.text = "Пока недоступно"
+		upgrade_action.disabled = true
+		return
+	upgrade_stats.text = "Уровень II · Лучники\nУрон  %s\nВыстрел каждые %s с\nДальность  %s кл.\nЦена постройки: 30 → 45 монет" % [stat_text(VETERAN_DAMAGE),stat_text(VETERAN_INTERVAL),stat_text(ELITE_RANGES[Tower.ARCHER])]
+	if upgrade_kind == Tower.MORTAR:
+		upgrade_stats.text = "Уровень II · Мортира\nУрон  %s\nВыстрел каждые %s с\nРадиус взрыва  %s кл.\nДальность  %s кл.\nЦена постройки: 60 → 75 монет" % [stat_text(HEAVY_SHELL_DAMAGE),stat_text(MORTAR_INTERVAL),stat_text(HEAVY_BLAST_RADIUS),stat_text(ELITE_RANGES[Tower.MORTAR])]
+	elif upgrade_kind == Tower.MILL:
+		upgrade_stats.text = "Уровень II · Ветряная мельница\nЗамедление  %d%% → %d%%\nРадиус  %s → %s кл.\nДействует, пока враг в радиусе\nЦена постройки: 40 → 50 монет" % [MILL_SLOW_PERCENT,STRONG_WIND_PERCENT,stat_text(TOWER_RANGES[Tower.MILL]),stat_text(ELITE_RANGES[Tower.MILL])]
+	elif upgrade_kind == Tower.BALLISTA:
+		upgrade_stats.text = "Уровень II · Баллиста\nУрон по каждой цели  %d → %d\nВыстрел каждые %s с\nДальность  %s → %s кл.\nЦена постройки: %d → %d монет" % [Ballista.DAMAGE[0],Ballista.DAMAGE[1],stat_text(Ballista.INTERVAL),stat_text(TOWER_RANGES[Tower.BALLISTA]),stat_text(ELITE_RANGES[Tower.BALLISTA]),TOWER_COSTS[Tower.BALLISTA],UPGRADE_COSTS[Tower.BALLISTA]]
 	var price = UPGRADE_COSTS[upgrade_kind]
-	upgrade_action.disabled = finished or upgraded[upgrade_kind] or coins < price
+	upgrade_action.disabled = finished or not upgrade_available(upgrade_kind) or upgraded[upgrade_kind] or coins < price
 	upgrade_action.text = "Уровень 2 получен" if upgraded[upgrade_kind] else "Улучшить за %d монет" % price
+	if not upgrade_available(upgrade_kind):
+		upgrade_stats.text = "Улучшения пока заблокированы"
+		upgrade_action.text = "Недоступно"
+
+func upgrade_available(kind: int) -> bool:
+	return (level_number >= 3 and kind == Tower.ARCHER) or (level_number >= 5 and kind == Tower.MORTAR) or (level_number >= 6 and kind == Tower.MILL) or (level_number >= 8 and kind == Tower.BALLISTA)
+
+func veteran_icon(kind: int) -> Texture2D:
+	if kind == Tower.BALLISTA:
+		return BALLISTA_VETERAN_ICON
+	if kind == Tower.MILL:
+		return MILL_VETERAN_ICON
+	if kind == Tower.MORTAR:
+		return MORTAR_VETERAN_ICON
+	return ARCHER_VETERAN_ICON if kind == Tower.ARCHER else TOWER_ICONS[kind]
+
+func tower_icon(kind: int) -> Texture2D:
+	return veteran_icon(kind) if upgraded[kind] else TOWER_ICONS[kind]
 
 func buy_upgrade():
 	var price = UPGRADE_COSTS[upgrade_kind]
-	if finished or upgraded[upgrade_kind] or coins < price or not tower_available(upgrade_kind):
+	if finished or upgrade_preview_level != 2 or not upgrade_available(upgrade_kind) or upgraded[upgrade_kind] or coins < price:
 		return
 	coins -= price
 	upgraded[upgrade_kind] = true
+	for entry in tower_tiles:
+		entry.button.icon = tower_icon(entry.kind)
 	for tower in towers:
 		if tower.kind == upgrade_kind:
 			tower.range = tower_range(tower.kind)
@@ -1005,9 +1176,10 @@ func show_tower_details(kind: int):
 			stat_text((HEAVY_SHELL_DAMAGE if upgraded[kind] else SHELL_DAMAGE) if mortar else archer_damage()),stat_text(MORTAR_INTERVAL if mortar else archer_interval())]
 		if mortar:
 			description += "\nРадиус взрыва   [color=#ffd079]%s кл.[/color]" % stat_text(HEAVY_BLAST_RADIUS if upgraded[kind] else BLAST_RADIUS)
+			description += "\n[color=#ffd079]Нельзя ставить мортиры в соседних\nклетках, включая диагонали.[/color]\nДругие башни рядом ставить можно."
 	tower_details.text = ("[b][font_size=23][color=#ffe4ad]%s[/color][/font_size]\n%s\n%s\n" +
 		"Дальность   [color=#ffd079]%s кл.[/color]\nЦена   [color=#ffd079]%d монет[/color][/b]") % [
-		TOWER_NAMES[kind]+(" · II" if upgraded[kind] else ""),TOWER_ROLES[kind],description,stat_text(tower_range(kind)),TOWER_COSTS[kind]]
+		TOWER_NAMES[kind]+(" · II" if upgraded[kind] else ""),TOWER_ROLES[kind],description,stat_text(tower_range(kind)),tower_cost(kind)]
 	info_panel.show()
 	info_panel.reset_size()
 	info_panel.position = Vector2(0,-info_panel.size.y-4)
@@ -1075,6 +1247,16 @@ func mouse_cell(point = get_viewport().get_mouse_position()):
 		return Vector2i(999,999)
 	return Vector2i(roundi(hit.x),roundi(hit.z))
 
+func mortar_spacing_allowed(cell: Vector2i, kind: int) -> bool:
+	if kind != Tower.MORTAR:
+		return true
+	for tower in towers:
+		if tower.kind == Tower.MORTAR:
+			var offset: Vector2i = tower.cell - cell
+			if absi(offset.x) <= 1 and absi(offset.y) <= 1:
+				return false
+	return true
+
 func _unhandled_input(event):
 	if not (event is InputEventMouseButton and event.pressed):
 		return
@@ -1100,7 +1282,11 @@ func _unhandled_input(event):
 		return
 	if not pads.has(cell) or not tower_available(selected_tower):
 		return
-	var price = TOWER_COSTS[selected_tower]
+	if not mortar_spacing_allowed(cell,selected_tower):
+		hint.text = "Слишком близко к мортире: оставьте между ними одну клетку"
+		message_time = 2.4
+		return
+	var price = tower_cost(selected_tower)
 	if coins < price:
 		hint.text = "Для башни нужно ещё %d монет" % (price-coins)
 		message_time = 2.4
@@ -1267,9 +1453,16 @@ func spawn_enemy():
 	elif brute:
 		body.scale = Vector3.ONE*1.38
 	var hp = health_table[wave-1] * (7 if ogre else (2 if brute else 1))
+	# Apply flat bonuses after type multipliers. Levels 3–5 also boost bosses.
+	if ogre:
+		hp += 100
+		if level_number in [3,4,5]:
+			hp += enemy_health_bonus()
+	else:
+		hp += enemy_health_bonus()
 	var mob = {"node":n,"body":body,"chest":chest,"legs":legs,"arms":arms,"guard_elbow":guard_elbow,
 		"phase_offset":rng.randf_range(0,TAU),"progress":0.0,"hp":hp,"max_hp":hp,
-		"brute":brute,"ogre":ogre,"speed":0.75 if ogre else (1.0 if brute or wave <= 3 else 1.5)}
+		"brute":brute,"ogre":ogre,"speed":0.75 if ogre else 1.0}
 	animate_gait(mob)
 	enemies.append(mob)
 
@@ -1551,6 +1744,7 @@ func leave_victory(path: String):
 	curtain.start(load(path))
 
 func _process(delta):
+	update_upgrade_hover(get_viewport().get_mouse_position())
 	if finished:
 		if not enemies.is_empty():
 			health_bars.queue_redraw()
@@ -1559,24 +1753,27 @@ func _process(delta):
 		message_time -= delta
 		if message_time <= 0:
 			default_hint()
-	if upgrade_panel.visible:
-		_hide_upgrade_outside(upgrade_hover_tile)
 	update_range_preview(get_viewport().get_mouse_position(), get_viewport().gui_get_hovered_control() != null)
 	if not fighting:
 		return
 	step_wave(delta)
+
+func update_upgrade_hover(point: Vector2):
+	if not upgrade_panel.visible:
+		return
+	# Small margin keeps the popup open while crossing from its tile to the panel.
+	if upgrade_panel.get_global_rect().grow(6).has_point(point):
+		return
+	if is_instance_valid(upgrade_hover_tile) and upgrade_hover_tile.get_global_rect().grow(6).has_point(point):
+		return
+	upgrade_panel.hide()
 
 func update_range_preview(point: Vector2, over_ui: bool):
 	var empty = Vector2i(999,999)
 	var cell = empty if over_ui else mouse_cell(point)
 	var tower = null if over_ui or pads.has(cell) else tower_at(cell, point)
 	if tower != null:
-		show_tower_details(tower.kind)
-		world_info_visible = true
 		cell = empty
-	elif world_info_visible:
-		info_panel.hide()
-		world_info_visible = false
 	if cell != hovered:
 		if pads.has(hovered):
 			pads[hovered].material_override = mat(pad_color,"grass")
@@ -1588,8 +1785,9 @@ func update_range_preview(point: Vector2, over_ui: bool):
 			radius = tower.range
 			ring.position = tower.node.position
 		else:
-			var price = TOWER_COSTS[selected_tower]
-			pads[cell].material_override = mat("d9bc76" if coins >= price else "aa7560","grass")
+			var price = tower_cost(selected_tower)
+			var allowed = coins >= price and mortar_spacing_allowed(cell,selected_tower)
+			pads[cell].material_override = mat("d9bc76" if allowed else "aa7560","grass")
 			ring.position = ground(cell)
 		var factor = float(radius) / RANGE
 		ring.scale = Vector3(factor, 1, factor)
@@ -1619,13 +1817,14 @@ func step_wave(delta):
 		remaining -= 1
 		spawn_clock = 0.64 if level_number >= 3 else 0.94
 		if reaper_pending and remaining == 0:
-			spawn_clock = 5.0
+			spawn_clock = REAPER_DELAY
+			boss_warning_sound.play()
 			hint.text = "Последний отряд вышел. Приближается Смерть…"
-			message_time = 5.0
+			message_time = REAPER_DELAY
 	elif reaper_pending and remaining == 0 and spawn_clock <= 0:
 		reaper_pending = false
 		boss_warning.hide()
-		enemies.append(Reaper.spawn(self,2.5*Undead.gargoyle_hp(self)))
+		enemies.append(Reaper.spawn(self,Undead.reaper_hp(self)))
 		hint.text = "Смерть у ворот кладбища. В мире духов она неуязвима."
 		message_time = 5.0
 	if reaper_pending and remaining == 0:
